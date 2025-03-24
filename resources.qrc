@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/plugins/Mismatch_Identifier_Plugin" >
+        <file>icon.png</file>
+    </qresource>
+</RCC>
