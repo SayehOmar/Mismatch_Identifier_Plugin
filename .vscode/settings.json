@@ -1,0 +1,9 @@
+{
+    "python.linting.enabled": true,
+    "python.linting.pylintEnabled": true,
+    "python.analysis.extraPaths": [
+        "C:/PROGRA~1/QGIS33~1.15/apps/qgis-ltr/./python",
+        "C:/Users/essayeh.omar_amaris/AppData/Roaming/QGIS/QGIS3/profiles/default/python",
+        "C:/PROGRA~1/QGIS33~1.15/apps/qgis-ltr/./python/plugins"
+    ]
+}
