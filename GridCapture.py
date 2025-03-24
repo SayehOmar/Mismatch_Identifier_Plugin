@@ -31,8 +31,8 @@ class GridCapture:
         self.map_settings.setBackgroundColor(QColor(255, 255, 255))  # White background
 
         # Set image size for output
-        self.image_width = 1000  # Set width
-        self.image_height = 1000  # Set height
+        self.image_width = 3000  # Set width
+        self.image_height = 3000  # Set height
         self.map_settings.setOutputSize(QSize(self.image_width, self.image_height))
 
     def capture_grid_cells(self):
@@ -74,10 +74,4 @@ class GridCapture:
 
         print("✅ All grid cells captured successfully!")
 
-# Example usage:
-grid_layer_path = "path/to/your/grid_layer.shp"  # Update with your actual grid layer path
-output_folder = "path/to/output/folder"  # Set your desired output folder
 
-# Initialize GridCapture object and start capturing images
-grid_capture = GridCapture(grid_layer_path, output_folder)
-grid_capture.capture_grid_cells()

@@ -48,7 +48,7 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
     def on_test_button_pressed(self):
         """This function will be called when the TestButton is pressed."""
         grid_layer_path = r"C:\Users\essayeh.omar_amaris\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\mismatch_identifier_plugin\Grid\grid.shp"  # Update with your actual grid layer path
-        output_folder = "Output_images"    # Update the output folder path
+        output_folder = r"C:\Users\essayeh.omar_amaris\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\mismatch_identifier_plugin\Output_images"   # Update the output folder path
 
         # Create an instance of GridCapture
         grid_capture = GridCapture(grid_layer_path, output_folder)
