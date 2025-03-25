@@ -38,7 +38,7 @@ for x in np.arange(xmin, xmax, grid_size):
 grid = gpd.GeoDataFrame(geometry=grid_cells, crs=roi.crs)
 
 # Save the grid to a new shapefile
-grid_output_path = r"C:\Users\essayeh.omar_amaris\Documents\GitHub\Mismatch_Identifier_Plugin\Grid\grid.shp"
+grid_output_path = "Grid\grid.shp"
 grid.to_file(grid_output_path)
 
 print(f"Grid generated and saved at: {grid_output_path}")
