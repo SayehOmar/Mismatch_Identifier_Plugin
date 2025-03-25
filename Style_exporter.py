@@ -8,7 +8,7 @@ if not os.path.exists(output_folder):
 
 project = QgsProject.instance()
 for layer in project.mapLayers().values():
-    if layer.isValid() and isinstance(layer, QgsVectorLayer):  # Or QgsRasterLayer, etc.
+    if layer.isValid() and isinstance(layer, QgsVectorLayer):  
         sld_path = os.path.join(output_folder, f"{layer.name()}.sld")
         layer.saveSldStyle(sld_path)
         print(f"Saved SLD style for {layer.name()} to {sld_path}")

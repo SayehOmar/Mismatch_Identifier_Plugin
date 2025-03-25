@@ -27,6 +27,7 @@ import os
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 from .GridCapture import GridCapture
+from .File_loader import FileLoader
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(
@@ -44,7 +45,18 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
         # http://qt-project.org/doc/qt-4.8/designer-using-a-ui-file.html
         # #widgets-and-dialogs-with-auto-connect
         self.setupUi(self)
-        self.TestButton.clicked.connect(self.on_test_button_pressed)
+        self.Start_Process.clicked.connect(self.on_test_button_pressed)
+        # Create a FileLoader instance
+        self.file_loader = FileLoader(self)
+
+        # Connect the browse buttons from FileLoader to the current dialog
+        self.Sauvegarde_Avant_AI_Button.clicked.connect(lambda: self.file_loader.open_file_dialog(self.Sauvegarde_Avant_AI))
+        self.Sauvegarde_Apres_AI_Button.clicked.connect(lambda: self.file_loader.open_file_dialog(self.Sauvegarde_Apres_AI))
+        self.Styles_Button.clicked.connect(lambda: self.file_loader.open_file_dialog(self.Styles))
+        # Connect load button to load layers function
+        self.StartLoading.clicked.connect(self.file_loader.load_layers)
+        
+
 
     def on_test_button_pressed(self):
         """This function will be called when the TestButton is pressed."""
