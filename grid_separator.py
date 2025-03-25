@@ -11,7 +11,7 @@ roi = gpd.read_file(roi_path)
 xmin, ymin, xmax, ymax = roi.total_bounds  # Get min/max X and Y
 
 # Ensure the bounding box is divisible by 20m
-grid_size = 20  # 20m x 20m
+grid_size = 10  # 20m x 20m
 
 def round_up(value, grid_size):
     """Round up to the nearest multiple of grid_size."""

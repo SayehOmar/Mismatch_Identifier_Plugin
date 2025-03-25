@@ -31,8 +31,8 @@ class GridCapture:
         self.map_settings.setBackgroundColor(QColor(255, 255, 255))  # White background
 
         # Set image size for output
-        self.image_width = 3000  # Set width
-        self.image_height = 3000  # Set height
+        self.image_width = 2000  # Set width
+        self.image_height = 2000  # Set height
         self.map_settings.setOutputSize(QSize(self.image_width, self.image_height))
 
     def capture_grid_cells(self):
