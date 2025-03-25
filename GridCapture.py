@@ -1,4 +1,5 @@
 import os
+import json  # Import the json module
 from PyQt5.QtCore import QSize
 from PyQt5.QtGui import QImage, QPainter, QColor
 from qgis.core import *
@@ -8,7 +9,7 @@ class GridCapture:
     def __init__(self, grid_layer_path, output_folder):
         self.grid_layer_path = grid_layer_path
         self.output_folder = output_folder
-        
+
         # Ensure the output folder exists
         if not os.path.exists(self.output_folder):
             os.makedirs(self.output_folder)
@@ -41,7 +42,7 @@ class GridCapture:
             geom = feature.geometry()
             extent = geom.boundingBox()  # Get the bounding box for the cell
             print(f"Layer CRS: {self.grid_layer.crs().authid()}")
-            
+
             # Set extent (zoom) for the map renderer to the current grid cell
             self.map_settings.setExtent(extent)
 
@@ -70,8 +71,25 @@ class GridCapture:
             image_path = os.path.join(self.output_folder, f"cell_{feature.id()}.png")
             image.save(image_path)  # Save the image
 
+            # Create metadata dictionary
+            metadata = {
+                "grid_id": feature.id(),
+                "extent": {
+                    "xmin": extent.xMinimum(),
+                    "ymin": extent.yMinimum(),
+                    "xmax": extent.xMaximum(),
+                    "ymax": extent.yMaximum(),
+                },
+                "crs": self.grid_layer.crs().authid(),
+                "layers": [layer.name() for layer in self.other_layers],
+            }
+
+            # Save metadata to a JSON file
+            metadata_path = os.path.join(self.output_folder, f"cell_{feature.id()}.json")
+            with open(metadata_path, "w") as f:
+                json.dump(metadata, f, indent=4)  # Save with indentation for readability
+
             print(f"Captured image for Cell {feature.id()} at {image_path}")
+            print(f"Saved metadata for Cell {feature.id()} at {metadata_path}")
 
         print("✅ All grid cells captured successfully!")
-
-

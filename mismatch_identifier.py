@@ -90,20 +90,40 @@ class MismatchIdentifier:
             return "random"
 
     def process_images(self):
-        """Processes all images in the input folder and classifies them."""
+        """Processes all images and JSON files in the input folder and classifies them."""
         for filename in os.listdir(self.input_folder):
-            if not filename.lower().endswith((".png", ".jpg", ".jpeg")):
-                continue  # Skip non-image files
+            if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".json")):
+                continue  # Skip non-image and non-JSON files
 
-            image_path = os.path.join(self.input_folder, filename)
-            category = self.classify_image(image_path)
+            file_path = os.path.join(self.input_folder, filename)
 
-            if category:
-                destination = os.path.join(self.output_folder, category, filename)
-                shutil.move(image_path, destination)
-                print(f"Moved {filename} to {category}")
+            if filename.lower().endswith((".png", ".jpg", ".jpeg")):
+                # Classify the image
+                category = self.classify_image(file_path)
+                if category:
+                    destination = os.path.join(self.output_folder, category, filename)
+                    shutil.move(file_path, destination)
+                    print(f"Moved {filename} to {category}")
 
-        print("✅ All images classified successfully!")
+                    # Move the corresponding JSON file
+                    json_filename = filename.rsplit(".", 1)[0] + ".json"
+                    json_path = os.path.join(self.input_folder, json_filename)
+                    if os.path.exists(json_path):
+                        json_destination = os.path.join(self.output_folder, category, json_filename)
+                        shutil.move(json_path, json_destination)
+                        print(f"Moved {json_filename} to {category}")
+
+            elif filename.lower().endswith(".json"):
+                # Classify the JSON based on the image classification
+                image_filename = filename.rsplit(".", 1)[0] + ".png"  # Construct image filename
+                image_path = os.path.join(self.input_folder, image_filename)
+
+                if os.path.exists(image_path):  # Check if the corresponding image exists
+                    category = self.classify_image(image_path)
+                    if category:
+                        destination = os.path.join(self.output_folder, category, filename)
+                        shutil.move(file_path, destination)
+                        print(f"Moved {filename} to {category}")
 
 # Run the classifier
 if __name__ == "__main__":
