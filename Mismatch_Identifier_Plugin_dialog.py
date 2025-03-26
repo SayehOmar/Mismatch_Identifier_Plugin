@@ -63,6 +63,8 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
         
         # Connect load button to load layers function
         self.StartLoading.clicked.connect(self.file_loader.load_layers)
+        
+        
 
     def on_test_button_pressed(self):
         """This function will be called when the TestButton is pressed."""

@@ -1,0 +1,19 @@
+(1)the plugin loads data -> input AV and AP ✅   {File_loader.py}
+
+(2) Loads  Styles ✅   {File_loader.py}
+
+(3) create grid from ROI ✅    {grid_separator.py}
+
+(4) Buildings ∩ Arc AV /AP   {grid_filter.py}
+
+(5) Buildings ∩ grid  -> deletes unnecessary grid to speed up process {grid_filter.py}
+
+*step 4 and 5 will run simultaneously for faster prossing* {Classification.py}
+    (4) create images GridCapture.py ✅ {GridCapture.py}
+    (5) process images -> classification +json metadata ✅  {mismatch_identifier.py}
+
+
+
+(6) based on json create selection-highlight errors {errors_highlighter.py}
+
+(7) export rapport with errors shapefiles and metadata exporter.py

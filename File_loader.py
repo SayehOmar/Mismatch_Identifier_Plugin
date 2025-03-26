@@ -1,26 +1,24 @@
 import os
 from PyQt5 import QtWidgets, uic
-from PyQt5.QtWidgets import QFileDialog
+from PyQt5.QtWidgets import QFileDialog ,QApplication 
 from PyQt5.QtCore import QTimer  # Added for progress updates
 from qgis.core import QgsProject, QgsVectorLayer
+from .progressBar import create_progress_bar_manager 
 
 class FileLoader(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(FileLoader, self).__init__(parent)
         uic.loadUi('Mismatch_Identifier_Plugin_dialog_base.ui', self)
         
+        
         # Instance variables to store paths
         self.folder1_path = ""
         self.folder2_path = ""
         self.style_folder_path = ""
+        progress_bar = parent.findChild(QtWidgets.QProgressBar, 'progressBar_1')
+        self.progress_manager = create_progress_bar_manager(progress_bar)
         
-        # Connect browse buttons to folder dialogs
-        self.Sauvegarde_Avant_AI_Button.clicked.connect(lambda: self.open_file_dialog(self.Sauvegarde_Avant_AI, 'folder1_path'))
-        self.Sauvegarde_Apres_AI_Button.clicked.connect(lambda: self.open_file_dialog(self.Sauvegarde_Apres_AI, 'folder2_path'))
-        self.Styles_Button.clicked.connect(lambda: self.open_file_dialog(self.Styles, 'style_folder_path'))
-
-        # Connect load button to load layers function
-        self.StartLoading.clicked.connect(self.load_layers)
+        
 
     def open_file_dialog(self, line_edit, folder_type):
         """Open a file dialog to select a folder and set it in the specified QLineEdit."""
@@ -39,7 +37,8 @@ class FileLoader(QtWidgets.QDialog):
     def load_layers(self):
         """Loads specific shapefiles from the folders and applies the styles from the style folder."""
         # Reset progress bar
-        self.progressBar_1.setValue(0)
+        self.progress_manager.reset()
+        
         
         # Get list of files to load
         required_files = [
@@ -49,9 +48,12 @@ class FileLoader(QtWidgets.QDialog):
             "Cadastre,_Polyligne.shp",
             "Arc_itineraire.shp"
         ]
+
+        total_files = len(required_files) * 2  # Layers from two folders
         
-        # Count total files to load
-        total_files = len(required_files) * 2  # Loading for both folders
+        # Set the total number of files for progress tracking
+        self.progress_manager.set_total(total_files)
+        
         
         # Get the project's layer tree root
         root = QgsProject.instance().layerTreeRoot()
@@ -91,7 +93,10 @@ class FileLoader(QtWidgets.QDialog):
         )
 
         # Ensure progress bar reaches 100%
-        self.progressBar_1.setValue(100)
+        self.progress_manager.complete()
+        
+
+        
 
     def load_shapefiles(self, folder_path, style_folder_path, required_files, group_name, is_first_folder=True, total_files=1, loaded_files=0):
         """Loads specific shapefiles from a folder and applies the styles from the style folder."""
@@ -136,14 +141,12 @@ class FileLoader(QtWidgets.QDialog):
                     # Apply the style if provided
                     if style_folder_path:
                         self.apply_style_from_folder(layer, style_folder_path)
-                    
+
+
                     # Update progress bar
-                    files_loaded_in_this_folder += 1
-                    progress = int((loaded_files + files_loaded_in_this_folder) / total_files * 100)
-                    self.progressBar_1.setValue(progress)
+                    self.progress_manager.update_progress()
                     
-                    # Process UI events to update progress bar
-                    QtWidgets.QApplication.processEvents()
+                    
 
                 else:
                     QtWidgets.QMessageBox.warning(self, "Error", f"Failed to load layer: {filename}")
