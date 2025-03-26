@@ -27,6 +27,8 @@ from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets
 from .GridCapture import GridCapture
 from .File_loader import FileLoader
+from .grid_filter import select_layers_near_arc_itineraire
+
 
 # This loads your .ui file so that PyQt can populate your plugin with the elements from Qt Designer
 FORM_CLASS, _ = uic.loadUiType(
@@ -71,8 +73,21 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
         grid_layer_path = "Grid/grid.shp"  # Update with your actual grid layer path
         output_folder = "Output_images"  # Update the output folder path
         
+        try:
+            # Call the select_layers_near_arc_itineraire function
+            # You can adjust the buffer distance as needed
+            select_layers_near_arc_itineraire(buffer_distance=10)
+            
+            
+        except Exception as e:
+            # Error handling
+            QtWidgets.QMessageBox.critical(self, "Error", f"An error occurred: {str(e)}")
+        
+        """
         # Create an instance of GridCapture
         grid_capture = GridCapture(grid_layer_path, output_folder)
         
         # Call the function to capture grid cells
-        grid_capture.capture_grid_cells()
+        grid_capture.capture_grid_cells()"
+        """
+        
