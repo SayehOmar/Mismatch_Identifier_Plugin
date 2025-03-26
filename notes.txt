@@ -16,4 +16,7 @@
 
 (6) based on json create selection-highlight errors {errors_highlighter.py}
 
-(7) export rapport with errors shapefiles and metadata exporter.py
+(7) export rapport with errors shapefiles and metadata exporter.py 
+
+
+27572
