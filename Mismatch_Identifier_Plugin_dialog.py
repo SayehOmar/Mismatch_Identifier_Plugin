@@ -61,9 +61,12 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
             # Create the ROI from the selected layers
             grid_filter.create_roi_from_bbox()
 
+            
+            grid_filter.export_selected_layers()
+            
             # Apply the grid separator and save the grid
             grid_filter.apply_grid_separator()
-
+            
             QtWidgets.QMessageBox.information(self, "Success", "Grid generated and saved successfully!")
 
         except Exception as e:
