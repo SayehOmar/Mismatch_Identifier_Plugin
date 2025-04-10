@@ -55,17 +55,24 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
             # Create a GridFilter instance
             grid_filter = GridFilter(reference_layer_name)
 
-            # Select layers within the buffer (5 meters)
-            grid_filter.select_layers_within_buffer()
+            # Select layer_by_name 
+            grid_filter.get_layer_by_name()
 
-            # Create the ROI from the selected layers
-            grid_filter.create_roi_from_bbox()
+            # generate_and_filter_grid
+            grid_filter.generate_and_filter_grid()
 
             
-            grid_filter.export_selected_layers()
+            #grid_filter.export_selected_layers()
             
             # Apply the grid separator and save the grid
-            grid_filter.apply_grid_separator()
+            #grid_filter.apply_grid_separator()
+            
+            # Apply the filter_grid_by_selection
+            #grid_filter.filter_grid_by_selection
+
+            # Apply the generate_and_filter_grid
+            grid_filter.generate_and_filter_grid
+
             
             QtWidgets.QMessageBox.information(self, "Success", "Grid generated and saved successfully!")
 

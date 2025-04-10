@@ -8,7 +8,7 @@ from .progressBar import create_progress_bar_manager
 class FileLoader(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(FileLoader, self).__init__(parent)
-        uic.loadUi('Mismatch_Identifier_Plugin_dialog_base.ui', self)
+        
         
         
         # Instance variables to store paths
