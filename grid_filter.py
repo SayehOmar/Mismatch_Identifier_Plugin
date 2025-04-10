@@ -13,8 +13,11 @@ from qgis.core import (
 import os
 
 class GridGenerator:
-    def __init__(self, reference_layer_name, grid_size=20, output_path="Grid/grid.shp"):
+    def __init__(self, reference_layer_name, grid_size=20, output_path="mismatch_identifier_plugin/Grid/grid.shp"):
         self.reference_layer_name = reference_layer_name
+        if output_path is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            output_path = os.path.join(script_dir, "Grid", "grid.shp")
         self.grid_size = grid_size
         self.output_path = output_path
         self.reference_layer = self.get_layer_by_name(reference_layer_name)
@@ -25,7 +28,6 @@ class GridGenerator:
             return layer[0]  
         else:
             raise ValueError(f"Layer '{layer_name}' not found in QGIS.")
-
     def generate_grid(self):
         extent = self.reference_layer.extent()
         xmin, ymin, xmax, ymax = extent.xMinimum(), extent.yMinimum(), extent.xMaximum(), extent.yMaximum()
@@ -53,8 +55,9 @@ class GridGenerator:
 
 
 class GridFilter:
-    def __init__(self, reference_layer_name):
+    def __init__(self, reference_layer_name,output_path="Grid/grid.shp"):
         self.reference_layer_name = reference_layer_name
+        self.output_path=output_path
         self.reference_layer = self.get_layer_by_name(reference_layer_name)
 
     def get_layer_by_name(self, layer_name='Arc_itineraire_AV'):

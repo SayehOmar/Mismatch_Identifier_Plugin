@@ -2,12 +2,16 @@ import cv2
 import numpy as np
 import os
 import shutil
+import time
+from PyQt5.QtCore import QObject, pyqtSignal
 
-class MismatchIdentifier:
+class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
+    log_signal = pyqtSignal(str)  # Define a signal for logging
+
     def __init__(self, input_folder="Output_images", output_folder="Classified_images"):
+        super().__init__()
         self.input_folder = input_folder
         self.output_folder = output_folder
-
         # Define HSV color ranges
         self.color_ranges = {
             "green": ((35, 50, 50), (85, 255, 255)),
@@ -15,11 +19,21 @@ class MismatchIdentifier:
             "red2": ((170, 50, 50), (180, 255, 255)),
             "white": ((0, 0, 200), (180, 50, 255)),
         }
-
         # Create output folders
         self.categories = ["no_cartography_error", "please_check", "cartography_error", "random"]
         self._create_folders()
 
+    def log(self, message):
+        # IMPORTANT: First emit the signal, then print
+        try:
+            self.log_signal.emit(str(message))
+        except:
+            pass  # Ignore errors with signal emission
+            
+        # Then print if needed
+        print(message)
+
+        
     def _create_folders(self):
         for category in self.categories:
             os.makedirs(os.path.join(self.output_folder, category), exist_ok=True)
@@ -91,6 +105,8 @@ class MismatchIdentifier:
 
     def process_images(self):
         """Processes all images and JSON files in the input folder and classifies them."""
+        self.log("🔍 Starting image classification...")
+
         for filename in os.listdir(self.input_folder):
             if not filename.lower().endswith((".png", ".jpg", ".jpeg", ".json")):
                 continue  # Skip non-image and non-JSON files
@@ -103,7 +119,7 @@ class MismatchIdentifier:
                 if category:
                     destination = os.path.join(self.output_folder, category, filename)
                     shutil.move(file_path, destination)
-                    print(f"Moved {filename} to {category}")
+                    self.log(f"Moved {filename} to {category}")
 
                     # Move the corresponding JSON file
                     json_filename = filename.rsplit(".", 1)[0] + ".json"
@@ -111,7 +127,7 @@ class MismatchIdentifier:
                     if os.path.exists(json_path):
                         json_destination = os.path.join(self.output_folder, category, json_filename)
                         shutil.move(json_path, json_destination)
-                        print(f"Moved {json_filename} to {category}")
+                        self.log(f"Moved {json_filename} to {category}")
 
             elif filename.lower().endswith(".json"):
                 # Classify the JSON based on the image classification
@@ -123,9 +139,10 @@ class MismatchIdentifier:
                     if category:
                         destination = os.path.join(self.output_folder, category, filename)
                         shutil.move(file_path, destination)
-                        print(f"Moved {filename} to {category}")
+                        self.log(f"Moved {filename} to {category}")
 
-# Run the classifier
+        self.log("✅ Image classification completed.")
+
 if __name__ == "__main__":
     classifier = MismatchIdentifier()
     classifier.process_images()

@@ -299,7 +299,7 @@ p, li { white-space: pre-wrap; }
           </widget>
          </item>
          <item row="1" column="0">
-          <widget class="QTextBrowser" name="textBrowser"/>
+          <widget class="QTextBrowser" name="GridCreation_ImagesCapturing"/>
          </item>
         </layout>
        </item>
@@ -320,7 +320,7 @@ p, li { white-space: pre-wrap; }
           </widget>
          </item>
          <item row="1" column="0">
-          <widget class="QTextBrowser" name="textBrowser_2"/>
+          <widget class="QTextBrowser" name="ImageProcessing_ErrorIdentifications"/>
          </item>
         </layout>
        </item>
