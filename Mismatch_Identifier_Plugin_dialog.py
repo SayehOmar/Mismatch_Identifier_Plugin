@@ -27,8 +27,8 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
         self.stderr_backup = sys.stderr
 
         # ✅ Initialize output/error capturers with proper argument and delay
-        self.output_capturer = StreamRedirector(self.stdout_backup, delay_ms=150)
-        self.error_capturer = StreamRedirector(self.stderr_backup, delay_ms=150)
+        self.output_capturer = StreamRedirector(self.stdout_backup, )
+        self.error_capturer = StreamRedirector(self.stderr_backup, )
 
         # Redirect stdout/stderr
         sys.stdout = self.output_capturer
@@ -151,11 +151,11 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
             self.classifier = MismatchIdentifier(
                 input_folder=input_folder,
                 output_folder=output_folder,
-                 
+
             )
-            
-            #self.classifier.log_signal.connect(self.append_to_processing_log)
-            self.classifier.process_images()
+
+            # self.classifier.log_signal.connect(self.append_to_processing_log)
+            self.classifier.process_images()  
 
             QtWidgets.QMessageBox.information(self, "Complete", "Full process completed successfully!")
 

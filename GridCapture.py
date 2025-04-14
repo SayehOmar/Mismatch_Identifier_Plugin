@@ -38,8 +38,8 @@ class GridCapture:
         self.map_settings.setBackgroundColor(QColor(255, 255, 255))
 
         # Set output image size - reduce for faster processing
-        self.image_width = 1200  # Reduced from 2000
-        self.image_height = 1200  # Reduced from 2000
+        self.image_width = 2000  
+        self.image_height = 2000  
         self.map_settings.setOutputSize(QSize(self.image_width, self.image_height))
         
         # Set renderer flags for better performance

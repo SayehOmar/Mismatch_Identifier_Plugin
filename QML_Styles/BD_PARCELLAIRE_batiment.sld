@@ -13,7 +13,7 @@
               <se:SvgParameter name="fill-opacity">0</se:SvgParameter>
             </se:Fill>
             <se:Stroke>
-              <se:SvgParameter name="stroke">#ff0004</se:SvgParameter>
+              <se:SvgParameter name="stroke">#fea500</se:SvgParameter>
               <se:SvgParameter name="stroke-width">1</se:SvgParameter>
               <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
             </se:Stroke>

@@ -9,7 +9,7 @@
           <se:Name>Single symbol</se:Name>
           <se:LineSymbolizer>
             <se:Stroke>
-              <se:SvgParameter name="stroke">#18e845</se:SvgParameter>
+              <se:SvgParameter name="stroke">#0400fe</se:SvgParameter>
               <se:SvgParameter name="stroke-width">2</se:SvgParameter>
               <se:SvgParameter name="stroke-linejoin">bevel</se:SvgParameter>
               <se:SvgParameter name="stroke-linecap">square</se:SvgParameter>
