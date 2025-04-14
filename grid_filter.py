@@ -13,7 +13,7 @@ from qgis.core import (
 import os
 
 class GridGenerator:
-    def __init__(self, reference_layer_name, grid_size=20, output_path="mismatch_identifier_plugin/Grid/grid.shp"):
+    def __init__(self, reference_layer_name, grid_size=10, output_path="mismatch_identifier_plugin/Grid/grid.shp"):
         self.reference_layer_name = reference_layer_name
         if output_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -67,7 +67,7 @@ class GridFilter:
         else:
             raise ValueError(f"Layer '{layer_name}' not found in QGIS.")
 
-    def generate_and_filter_grid(self, grid_size=20, buffer_distance=5, output_path="Grid/grid.shp"):
+    def generate_and_filter_grid(self, grid_size=10, buffer_distance=1, output_path="Grid/grid.shp"):
         """
         Generate a grid and filter it to only include cells that intersect with the reference layer.
         
@@ -80,7 +80,9 @@ class GridFilter:
         - The filtered grid layer
         """
         print(f"Generating grid with cell size: {grid_size}...")
-        
+        if output_path is None:
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            output_path = os.path.join(script_dir, "Grid", "grid.shp")
         # Get the reference layer extent, possibly with buffer
         extent = self.reference_layer.extent()
         if buffer_distance > 0:
