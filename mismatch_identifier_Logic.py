@@ -34,7 +34,7 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
 
     def calculate_pixels_per_meter(self):
         """Calculates the pixels per meter for the given image."""
-        pixels_per_meter = 2000 / 10  
+        pixels_per_meter = 2000 / 15  
         return pixels_per_meter
 
     def check_overlap_proximity(self, mask1, mask2, distance_threshold):

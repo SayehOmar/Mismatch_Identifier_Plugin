@@ -1,3 +1,6 @@
 Output_images/
 Classified_images/
 GridCaptures/
+*.sr.lock
+dataset/
+data/

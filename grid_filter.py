@@ -13,7 +13,7 @@ from qgis.core import (
 import os
 
 class GridGenerator:
-    def __init__(self, reference_layer_name, grid_size=10, output_path="mismatch_identifier_plugin/Grid/grid.shp"):
+    def __init__(self, reference_layer_name, grid_size=15, output_path="mismatch_identifier_plugin/Grid/grid.shp"):
         self.reference_layer_name = reference_layer_name
         if output_path is None:
             script_dir = os.path.dirname(os.path.abspath(__file__))

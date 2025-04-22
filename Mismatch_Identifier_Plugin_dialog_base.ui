@@ -237,13 +237,6 @@ p, li { white-space: pre-wrap; }
              </property>
             </widget>
            </item>
-           <item row="1" column="0" rowspan="2" colspan="2">
-            <widget class="QProgressBar" name="progressBar_2">
-             <property name="value">
-              <number>0</number>
-             </property>
-            </widget>
-           </item>
            <item row="1" column="2" rowspan="2">
             <widget class="QPushButton" name="Start_Process">
              <property name="text">
