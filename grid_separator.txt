@@ -2,6 +2,8 @@ import geopandas as gpd
 from shapely.geometry import Polygon
 import numpy as np
 import math
+import random
+import string
 
 class GridGenerator:
     def __init__(self, roi_path, grid_size=10, output_path="Grid/grid.shp"):
@@ -10,7 +12,7 @@ class GridGenerator:
 
         Parameters:
         - roi_path (str): Path to the ROI shapefile.
-        - grid_size (int): The size of each grid cell in meters. Default is 20.
+        - grid_size (int): The size of each grid cell in meters. Default is 10.
         - output_path (str): The path to save the generated grid shapefile.
         """
         self.roi_path = roi_path
@@ -38,25 +40,30 @@ class GridGenerator:
         ymax = self.round_up(ymax)
         return xmin, ymin, xmax, ymax
 
+    def generate_random_code(self, length=8):
+        """Generate a random alphanumeric code of given length."""
+        return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
     def generate_grid(self):
-        """Generate the grid cells within the ROI bounding box."""
-        xmin, ymin, xmax, ymax = self.roi.total_bounds  # Get min/max X and Y
+        """Generate the grid cells within the ROI bounding box with a unique alphanumeric ID."""
+        xmin, ymin, xmax, ymax = self.roi.total_bounds
         xmin, ymin, xmax, ymax = self.adjust_bounding_box(xmin, ymin, xmax, ymax)
 
         grid_cells = []
         for x in np.arange(xmin, xmax, self.grid_size):
             for y in np.arange(ymin, ymax, self.grid_size):
-                grid_cells.append(Polygon([(x, y), (x + self.grid_size, y),
-                                           (x + self.grid_size, y + self.grid_size), (x, y + self.grid_size)]))
+                polygon = Polygon([
+                    (x, y), (x + self.grid_size, y),
+                    (x + self.grid_size, y + self.grid_size), (x, y + self.grid_size)
+                ])
+                random_code = self.generate_random_code()
+                grid_cells.append({'geometry': polygon, 'grid_id': f"CELL_{random_code}"})
 
-        # Create GeoDataFrame for the grid
-        grid = gpd.GeoDataFrame(geometry=grid_cells, crs=self.roi.crs)
+        grid = gpd.GeoDataFrame(grid_cells, crs=self.roi.crs)
         return grid
 
     def save_grid(self):
         """Generate and save the grid to a shapefile."""
         grid = self.generate_grid()
         grid.to_file(self.output_path)
-        print(f"Grid generated and saved at: {self.output_path}")
-
-
+        print(f"✅ Grid generated and saved at: {self.output_path}")

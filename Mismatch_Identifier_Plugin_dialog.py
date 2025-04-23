@@ -157,7 +157,7 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
            
             self.classifier.process_images()  
 
-            #QtWidgets.QMessageBox.information(self, "Complete", "Full process completed successfully!")
+            QtWidgets.QMessageBox.information(self, "Complete", "Full process completed successfully!")
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "❌ Error", f"Process failed: {str(e)}")

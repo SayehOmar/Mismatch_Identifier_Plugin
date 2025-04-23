@@ -11,7 +11,9 @@ from qgis.core import (
     QgsVectorLayer
 )
 import os
-
+import uuid
+from qgis.core import QgsField
+from qgis.PyQt.QtCore import QVariant
 class GridGenerator:
     def __init__(self, reference_layer_name, grid_size=15, output_path="mismatch_identifier_plugin/Grid/grid.shp"):
         self.reference_layer_name = reference_layer_name
@@ -115,13 +117,16 @@ class GridFilter:
         # Create a filtered grid that only contains cells intersecting with the reference layer
         filtered_grid = QgsVectorLayer("Polygon?crs=" + grid_layer.crs().authid(), "Filtered_Grid", "memory")
         provider = filtered_grid.dataProvider()
-        
+        provider.addAttributes([QgsField("hex_id", QVariant.String)])
+        filtered_grid.updateFields()
         # Add features that intersect with reference layer
         intersecting_features = []
         
         for grid_feature in grid_layer.getFeatures():
             grid_geom = grid_feature.geometry()
             if any(ref_geom.intersects(grid_geom) for ref_geom in reference_geoms):
+                grid_feature.setFields(filtered_grid.fields())  # Ensure the fields match
+                grid_feature.setAttribute("hex_id", uuid.uuid4().hex[:10])  # 10-char unique hex
                 intersecting_features.append(grid_feature)
         
         provider.addFeatures(intersecting_features)
