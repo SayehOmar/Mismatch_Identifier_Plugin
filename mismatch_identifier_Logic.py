@@ -34,31 +34,31 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
 
     def calculate_pixels_per_meter(self):
         """Calculates the pixels per meter for the given image."""
-        pixels_per_meter = 2000 / 15  
+        pixels_per_meter = 2000 / 15
         return pixels_per_meter
 
     def check_overlap_proximity(self, mask1, mask2, distance_threshold):
         """
         Checks if every pixel in mask1 has at least one pixel of mask2 within a given radius.
-        Returns True if all pixels in mask1 have at least one pixel of mask2 within distance_threshold.
+        Returns True if all pixels in mask1 has at least one pixel of mask2 within distance_threshold.
         """
         # If either mask is empty, there can't be overlap
         if np.sum(mask1) == 0 or np.sum(mask2) == 0:
             return False
-        
+
         # Dilate mask2 to create a region that includes all pixels within distance_threshold
         kernel = np.ones((2 * distance_threshold + 1, 2 * distance_threshold + 1), np.uint8)
         dilated_mask2 = cv2.dilate(mask2, kernel, iterations=1)
-        
+
         # Find all pixels in mask1
         mask1_pixels = np.where(mask1 > 0)
-        
+
         # Check if all pixels in mask1 have at least one pixel of mask2 within distance_threshold
         for y, x in zip(mask1_pixels[0], mask1_pixels[1]):
             # If the corresponding pixel in dilated_mask2 is 0, then there's no pixel of mask2 within distance_threshold
             if dilated_mask2[y, x] == 0:
                 return False
-        
+
         return True
 
     def calculate_min_distance_efficient(self, mask1, mask2):
@@ -104,7 +104,7 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
         # Check if cables are present
         green_detected = np.sum(green_mask > 0) > 0
         red_detected = np.sum(red_mask > 0) > 0
-        
+
         # If no cables are presented in the photo, classify as random
         if not green_detected and not red_detected:
             report["reason"] = "No cables (green or red) detected."
@@ -113,49 +113,38 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
             report["building_overlap"] = False
             return "random", report
 
-        # Check overlap conditions with improved proximity check
+        # Check overlap conditions
         cable_overlap = self.check_overlap_proximity(red_mask, green_mask, 3)
         building_overlap = self.check_overlap_proximity(orange_mask, blue_mask, 3)
-        
-        # Calculate building distance
-        building_distance_pixels = self.calculate_min_distance_efficient(blue_mask, orange_mask)
-        building_distance_meters = building_distance_pixels / pixels_per_meter if building_distance_pixels != float('inf') else float('inf')
-        
+
+        # Calculate building distance only if both buildings are present
+        if np.sum(blue_mask) > 0 and np.sum(orange_mask) > 0:
+            building_distance_pixels = self.calculate_min_distance_efficient(blue_mask, orange_mask)
+            building_distance_meters = building_distance_pixels / pixels_per_meter if building_distance_pixels != float('inf') else float('inf')
+        else:
+            building_distance_meters = float('inf')
+
         # Set report values
-        report["building_distance_meters"] = f"{building_distance_meters:.2f}"
+        report["building_distance_meters"] = f"{building_distance_meters:.2f}" if building_distance_meters != float('inf') else "N/A"
         report["cable_overlap"] = bool(cable_overlap)
         report["building_overlap"] = bool(building_overlap)
-        
-        # Apply logic based on requirements - prioritizing the first condition
-        
-        # CONDITION 1: If cables are present and green overlaps with red, while blue and orange buildings are overlapping
-        if green_detected and red_detected and cable_overlap and building_overlap:
+
+        # Apply classification logic
+        if np.sum(blue_mask) > 0 and np.sum(orange_mask) > 0 and building_distance_meters > 0.5:
+            report["reason"] = "Blue building is not covering orange building (distance > 0.5m)."
+            return "cartography_error", report
+        elif green_detected and red_detected and cable_overlap and not building_overlap:
+            report["reason"] = "Cables overlapping, buildings not overlapping."
+            return "cartography_error", report
+        elif green_detected and red_detected and cable_overlap and building_overlap:
             report["reason"] = "Cables overlapping, buildings overlapping."
             return "no_cartography_error", report
-        
-        # CONDITION 4: If cables are present and green overlaps with red, while blue and orange buildings are not overlapping
-        if green_detected and red_detected and cable_overlap and not building_overlap and building_distance_meters >= 0.5:
-            report["reason"] = "Cables overlapping, buildings not overlapping (distance >= 0.5m)."
-            return "cartography_error", report
-        
-        # CONDITION 2: If blue building is not covering orange building (distance > 0.5m)
-        if building_distance_meters >= 0.5:
-            report["reason"] = "Buildings not overlapping, distance >= 0.5m."
-            return "cartography_error", report
-        
-        # CONDITION 6: If cables are present and green doesn't overlap with red, while buildings are slightly overlapping
-        if green_detected and red_detected and not cable_overlap and 0 < building_distance_meters < 0.5:
+        elif green_detected and red_detected and not cable_overlap and np.sum(blue_mask) > 0 and np.sum(orange_mask) > 0 and 0 < building_distance_meters < 0.5:
             report["reason"] = "Cables not overlapping, buildings slightly overlapping (0 < distance < 0.5m)."
             return "please_check", report
-        
-        # Additional case
-        if green_detected and red_detected and cable_overlap and 0 < building_distance_meters < 0.5:
-            report["reason"] = "Cables overlapping, buildings slightly overlapping (0 < distance < 0.5m)."
+        else:
+            report["reason"] = "Unhandled case based on the defined logic."
             return "please_check", report
-        
-        # Default case for any other situation
-        report["reason"] = "Unhandled case, using default classification."
-        return "please_check", report
 
 
     def process_images(self):

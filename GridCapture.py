@@ -27,8 +27,14 @@ class GridCapture:
         print(f"✅ Found grid layer: {self.grid_layer.name()}")
 
         # Load other vector layers (excluding the grid layer)
-        self.other_layers = [layer for layer in QgsProject.instance().mapLayers().values()
-                             if isinstance(layer, QgsVectorLayer) and layer.name() != "Filtered_Grid"]
+        layer_order = iface.mapCanvas().layers()
+        self.other_layers = [
+            layer for layer in layer_order
+            if isinstance(layer, QgsVectorLayer) and layer.name() != "Filtered_Grid"
+        ]
+
+
+
         
         print(f"✅ Found {len(self.other_layers)} other layers to render")
 

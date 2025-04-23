@@ -66,6 +66,8 @@ class FileLoader(QtWidgets.QDialog):
         # Create new groups
         avant_ai_group = root.addGroup("Avant AI")
         apres_ai_group = root.addGroup("Apres AI")
+        
+        
 
         # Track loaded files
         loaded_files = 0
