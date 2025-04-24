@@ -3,7 +3,7 @@ from PyQt5.QtCore import QObject, pyqtSignal, QTimer
 class StreamRedirector(QObject):
     text_written = pyqtSignal(str)
     
-    def __init__(self, original_stdout, text_widget=None, delay_ms=100):
+    def __init__(self, original_stdout, text_widget=None, delay_ms=1):
         super().__init__()
         self.original_stdout = original_stdout
         self.text_widget = text_widget

@@ -1,21 +1,41 @@
-if no cables are presented in  the photo ignore (green or red should be presented ) :random
+if no cables are presented in  the photo ignore (green or red should be presented )
+    Return :random
+
+if bleu building is not covering orange building == both colors are in the photo :
+     check if an orange pixel has a bleu pixel in 3 pixel distance radious and (green or red are presented)  : cartography error
+
+if cables are presented in the photo :
+        green covers red ( this case means the image doesnt have a red color only green) 
+    if not 
+         check if red pixel has a green pixel in 3 pixel distance radious   
+    while 
+        (bleu building is not covering  orange  building )
+    if not 
+        ( bleu pixel doesnt have  an orange pixel in 3 pixel distance radious)  
+     
+    return : cartography_error
 
 
 
-if bleu building is not covering orange building ( if both colors are in the photo) distance bigger than 0.5 please check  : cartography error
+if cables are presented in the photo :
+        (green covers red ( this case means the image doesnt have a red color only green) 
+    if not
+         check if a red pixel has a green pixel in 3 pixel distance radious)
+    while 
+         ( bleu building is  covering  orange   building( this case means the image doesnt have a orange color only bleu) ) 
+    if not
+           (bleu pixel  have an orange pixel in 3 pixel distance radious )
+    Return : no_cartography_error
 
 
 
-if photo all white : random 
 
+ff0004
+ fea500 
+0400fe
+18e845
 
-
-if cables are presented in the photo and green overlaps with red (green covers red  or  red pixel has a green pixel in 3 pixel distance radious  ) while bleu building and orange building are not overlapping :cartography_error
-
-
-
-if cables are presented in the photo and green overlaps with red (green covers red   or check if a red pixel has a green pixel in 3 pixel distance radious) while bleu building and orange building are  overlapping (check if a orange pixel has a bleu pixel in 3 pixel distance radious) : no_cartography_error
-
-
-
-if cables are presented in the photo and green doesn't overlaps with red while bleu building and orange building are  slightly overlapping : please check 
+the are the colors is should work with the images are 2000by2000 so it should be easy to detect colors 
+also i mentionned the option of deleting the white pixels entirely from the image 
+so if the there is no more pixel we know it was all white 
+if there is remainning pixels we chech their colors accourding the logic

@@ -5,6 +5,7 @@ from PyQt5.QtGui import QImage, QPainter, QColor
 from qgis.core import *
 from qgis.utils import iface
 
+
 class GridCapture:
     def __init__(self, output_folder):
         self.output_folder = output_folder

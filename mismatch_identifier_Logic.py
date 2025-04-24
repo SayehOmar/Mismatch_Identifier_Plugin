@@ -14,7 +14,7 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
         self.input_folder = input_folder
         self.output_folder = output_folder
         # Create output folders
-        self.categories = ["no_cartography_error", "please_check", "cartography_error", "random"]
+        self.categories = ["no_cartography_error",  "cartography_error"]
         self._create_folders()
 
     def log(self, message):
@@ -75,10 +75,10 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
         return min(min_dist1, min_dist2)
 
     def classify_image(self, image_path):
-        """Classifies an image based on the specific logic requested."""
+        """Classifies an image based on the final logic."""
         image = cv2.imread(image_path)
         if image is None:
-            return "random", {"reason": "Could not read image.", "building_distance_meters": "N/A", "cable_overlap": False, "building_overlap": False}
+            return "random", {"reason": "Could not read image."}
 
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
@@ -88,63 +88,61 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
         red_mask = cv2.inRange(hsv, np.array([0, 150, 150]), np.array([10, 255, 255]))
         green_mask = cv2.inRange(hsv, np.array([50, 150, 150]), np.array([70, 255, 255]))
 
-        pixels_per_meter = self.calculate_pixels_per_meter()
-        report = {}
+        # Check presence of colors - convert NumPy bool_ to Python bool
+        green_present = bool(np.sum(green_mask) > 0)
+        red_present = bool(np.sum(red_mask) > 0)
+        blue_present = bool(np.sum(blue_mask) > 0)
+        orange_present = bool(np.sum(orange_mask) > 0)
+        
+        report = {
+            "green_present": green_present,
+            "red_present": red_present, 
+            "blue_present": blue_present,
+            "orange_present": orange_present
+        }
 
-        # Check if image is all white
-        white_pixel_count = np.sum((hsv[:, :, 1] < 50) & (hsv[:, :, 2] > 200))
-        total_pixels = image.shape[0] * image.shape[1]
-        if white_pixel_count == total_pixels:
-            report["reason"] = "Image is all white."
-            report["building_distance_meters"] = "N/A"
-            report["cable_overlap"] = False
-            report["building_overlap"] = False
-            return "random", report
-
-        # Check if cables are present
-        green_detected = np.sum(green_mask > 0) > 0
-        red_detected = np.sum(red_mask > 0) > 0
-
-        # If no cables are presented in the photo, classify as random
-        if not green_detected and not red_detected:
+        # If no cables are present, classify as random
+        if not (green_present or red_present):
             report["reason"] = "No cables (green or red) detected."
-            report["building_distance_meters"] = "N/A"
-            report["cable_overlap"] = False
-            report["building_overlap"] = False
             return "random", report
 
-        # Check overlap conditions
-        cable_overlap = self.check_overlap_proximity(red_mask, green_mask, 3)
-        building_overlap = self.check_overlap_proximity(orange_mask, blue_mask, 3)
+        # Check overlaps - convert NumPy bool_ to Python bool
+        cables_overlap = False
+        buildings_overlap = False
+        
+        if green_present and red_present:
+            cables_overlap = bool(self.check_overlap_proximity(red_mask, green_mask, 3))
+        
+        if blue_present and orange_present:
+            buildings_overlap = bool(self.check_overlap_proximity(orange_mask, blue_mask, 3))
+        
+        report["cables_overlap"] = cables_overlap
+        report["buildings_overlap"] = buildings_overlap
 
-        # Calculate building distance only if both buildings are present
-        if np.sum(blue_mask) > 0 and np.sum(orange_mask) > 0:
-            building_distance_pixels = self.calculate_min_distance_efficient(blue_mask, orange_mask)
-            building_distance_meters = building_distance_pixels / pixels_per_meter if building_distance_pixels != float('inf') else float('inf')
-        else:
-            building_distance_meters = float('inf')
-
-        # Set report values
-        report["building_distance_meters"] = f"{building_distance_meters:.2f}" if building_distance_meters != float('inf') else "N/A"
-        report["cable_overlap"] = bool(cable_overlap)
-        report["building_overlap"] = bool(building_overlap)
-
-        # Apply classification logic
-        if np.sum(blue_mask) > 0 and np.sum(orange_mask) > 0 and building_distance_meters > 0.5:
-            report["reason"] = "Blue building is not covering orange building (distance > 0.5m)."
+        # Cartography error cases
+        if blue_present and orange_present and not buildings_overlap:
+            report["reason"] = "Blue building is not covering orange building."
             return "cartography_error", report
-        elif green_detected and red_detected and cable_overlap and not building_overlap:
-            report["reason"] = "Cables overlapping, buildings not overlapping."
+        
+        if green_present and red_present and cables_overlap and not buildings_overlap:
+            report["reason"] = "Cables overlap but buildings don't overlap."
             return "cartography_error", report
-        elif green_detected and red_detected and cable_overlap and building_overlap:
-            report["reason"] = "Cables overlapping, buildings overlapping."
+        
+        # No cartography error cases
+        if green_present and red_present and cables_overlap and buildings_overlap:
+            report["reason"] = "Cables overlap and buildings overlap correctly."
             return "no_cartography_error", report
-        elif green_detected and red_detected and not cable_overlap and np.sum(blue_mask) > 0 and np.sum(orange_mask) > 0 and 0 < building_distance_meters < 0.5:
-            report["reason"] = "Cables not overlapping, buildings slightly overlapping (0 < distance < 0.5m)."
-            return "please_check", report
-        else:
-            report["reason"] = "Unhandled case based on the defined logic."
-            return "please_check", report
+        
+        # For the second image case (only blue and green)
+        if blue_present and green_present and not red_present and not orange_present:
+            report["reason"] = "Only blue buildings and green cables present, properly aligned."
+            return "no_cartography_error", report
+        
+        # Default: needs human verification
+        report["reason"] = "Case not covered by defined rules."
+        return "please_check", report
+        
+        
 
 
     def process_images(self):
@@ -189,7 +187,3 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
                 self.log(f"Saved analysis report to {json_filename} in {category}.")
 
         self.log("✅ Image classification completed with new logic (JSONs moved).")
-
-if __name__ == "__main__":
-    classifier = MismatchIdentifier()
-    classifier.process_images()

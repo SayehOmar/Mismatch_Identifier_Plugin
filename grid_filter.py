@@ -69,7 +69,7 @@ class GridFilter:
         else:
             raise ValueError(f"Layer '{layer_name}' not found in QGIS.")
 
-    def generate_and_filter_grid(self, grid_size=10, buffer_distance=1, output_path="Grid/grid.shp"):
+    def generate_and_filter_grid(self, grid_size=15, buffer_distance=1, output_path="Grid/grid.shp"):
         """
         Generate a grid and filter it to only include cells that intersect with the reference layer.
         
@@ -157,8 +157,8 @@ class GridFilter:
             print(f"Filtered grid successfully exported to {output_path}")
             # Add the layer to QGIS project
             loaded_layer = QgsProject.instance().addMapLayer(filtered_grid.clone())
-            print(f"Added filtered grid to QGIS project as layer: {loaded_layer.name()}")
-            return filtered_grid
+            #print(f"Added filtered grid to QGIS project as layer: {loaded_layer.name()}")
+            #return filtered_grid
         else:
             print(f"Error exporting filtered grid: Code {error_code}, Message: {error_message}")
             return None

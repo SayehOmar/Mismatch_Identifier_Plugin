@@ -8,6 +8,7 @@ from .File_loader import FileLoader
 from .grid_filter import GridFilter
 from .mismatch_identifier_Logic import MismatchIdentifier
 from .stream_redirector import StreamRedirector
+from .white_remover import WhitePixelRemover
 
 
 FORM_CLASS, _ = uic.loadUiType(
@@ -145,22 +146,36 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
             plugin_dir = os.path.dirname(os.path.abspath(__file__))
             self.on_generate_grid()
             self.on_capture_grid_clicked()
+
             input_folder = os.path.join(plugin_dir, "GridCaptures")
             output_folder = os.path.join(plugin_dir, "Classified_images")
 
-            self.classifier = MismatchIdentifier(
-                input_folder=input_folder,
-                output_folder=output_folder,
+            # Remove white pixels from captured images
+            self.safe_append_to_grid_creation_browser("🔄 Removing white pixels from captured images...")
 
+            for filename in os.listdir(input_folder):
+                if filename.lower().endswith(".png"):
+                    file_path = os.path.join(input_folder, filename)
+                    try:
+                        remover = WhitePixelRemover(input_path=file_path, output_path=file_path)
+                        remover.process()
+                        self.safe_append_to_grid_creation_browser(f"✅ Processed: {filename}")
+                    except Exception as e:
+                        self.safe_append_to_grid_creation_browser(f"❌ Failed to process {filename}: {str(e)}")
+
+            self.safe_append_to_grid_creation_browser("✅ White pixel removal completed!")
+
+            # Classify the cleaned images
+            self.classifier = MismatchIdentifier(
+                input_folder=input_folder,  # input_folder now has cleaned images
+                output_folder=output_folder,
             )
 
-           
-            self.classifier.process_images()  
-
-            QtWidgets.QMessageBox.information(self, "Complete", "Full process completed successfully!")
+            self.classifier.process_images()
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "❌ Error", f"Process failed: {str(e)}")
+
 
 
 
