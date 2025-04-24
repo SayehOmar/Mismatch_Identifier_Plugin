@@ -1,122 +1,136 @@
-import os
 import torch
-from torch import nn, optim
-from torchvision import datasets, models, transforms
+import torch.nn as nn
+import torch.optim as optim
 from torch.utils.data import DataLoader
+from torchvision import datasets, transforms
+import os
 from tqdm import tqdm
-import matplotlib.pyplot as plt
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
-import numpy as np
 
-# Paths
-data_dir = r"C:\Users\essayeh.omar_amaris\Desktop\ML model\data\dataset_split"
-train_dir = os.path.join(data_dir, "train")
-val_dir = os.path.join(data_dir, "val")
+from multiprocessing import freeze_support
+if __name__ == '__main__':
+    freeze_support() # Only needed if you plan to freeze the script
 
-# Hyperparameters
-batch_size = 16
-num_epochs = 10
-lr = 0.001
-num_classes = len(os.listdir(train_dir))
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# Transforms
-transform = transforms.Compose([
-    transforms.Resize((224, 224)),
+# Define data directories
+train_dir = 'data/dataset_split/train'
+val_dir = 'data/dataset_split/val'
+
+# Define image size and batch size
+image_size = 2000  # You can adjust this
+batch_size = 32
+
+# Define transformations
+train_transforms = transforms.Compose([
+    transforms.Resize((image_size, image_size)),
     transforms.ToTensor(),
-    transforms.Normalize([0.5]*3, [0.5]*3)
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]) # Standard ImageNet normalization
 ])
 
-# Datasets
-train_dataset = datasets.ImageFolder(train_dir, transform=transform)
-val_dataset = datasets.ImageFolder(val_dir, transform=transform)
+val_transforms = transforms.Compose([
+    transforms.Resize((image_size, image_size)),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+])
 
-train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-val_loader = DataLoader(val_dataset, batch_size=batch_size)
+# Load datasets
+train_dataset = datasets.ImageFolder(train_dir, transform=train_transforms)
+val_dataset = datasets.ImageFolder(val_dir, transform=val_transforms)
 
-# Model
-model = models.resnet18(pretrained=True)
-model.fc = nn.Linear(model.fc.in_features, num_classes)
-model = model.to(device)
+# Create data loaders
+train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=0)
+val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=0)
+# Get class names and number of classes
+class_names = train_dataset.classes
+num_classes = len(class_names)
+print(f"Valid classes detected: {class_names}")
+print(f"Number of classes: {num_classes}")
+print(f"Class mapping: {train_dataset.class_to_idx}")
 
-# Loss and optimizer
+# Define the Simple Color CNN model
+class SimpleColorCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(SimpleColorCNN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1)
+        self.relu1 = nn.ReLU()
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.conv2 = nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1)
+        self.relu2 = nn.ReLU()
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.gap = nn.AdaptiveAvgPool2d((1, 1)) # Global Average Pooling
+        self.fc = nn.Linear(32, num_classes)
+
+    def forward(self, x):
+        x = self.pool1(self.relu1(self.conv1(x)))
+        x = self.pool2(self.relu2(self.conv2(x)))
+        x = self.gap(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+# Initialize the model
+model = SimpleColorCNN(num_classes).to(torch.device("cuda" if torch.cuda.is_available() else "cpu"))
+device = next(model.parameters()).device
+print(f"Using device: {device}")
+
+# Define loss function and optimizer
 criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=lr)
+optimizer = optim.Adam(model.parameters(), lr=0.001)
 
 # Training loop
-train_losses, val_losses = [], []
-best_acc = 0.0
-
+num_epochs = 10
 for epoch in range(num_epochs):
     model.train()
-    running_loss = 0
-    for images, labels in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs} - Training"):
-        images, labels = images.to(device), labels.to(device)
+    train_loss = 0.0
+    train_correct = 0
+    total_train = 0
+    train_progress = tqdm(enumerate(train_loader), total=len(train_loader), desc=f"Epoch {epoch+1}/{num_epochs} - Training")
+    for i, (inputs, labels) in train_progress:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+
         optimizer.zero_grad()
-        outputs = model(images)
+        outputs = model(inputs)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
-        running_loss += loss.item()
 
-    train_losses.append(running_loss / len(train_loader))
+        train_loss += loss.item() * inputs.size(0)
+        _, predicted = torch.max(outputs.data, 1)
+        total_train += labels.size(0)
+        train_correct += (predicted == labels).sum().item()
 
-    # Validation
+        train_progress.set_postfix({'loss': f'{loss.item():.4f}'})
+
+    train_loss = train_loss / total_train
+    train_accuracy = 100 * train_correct / total_train
+    print(f'Epoch {epoch+1}/{num_epochs}, Training Loss: {train_loss:.4f}, Training Accuracy: {train_accuracy:.2f}%')
+
+    # Validation loop
     model.eval()
-    correct, total = 0, 0
-    val_loss = 0
+    val_loss = 0.0
+    val_correct = 0
+    total_val = 0
+    val_progress = tqdm(enumerate(val_loader), total=len(val_loader), desc=f"Epoch {epoch+1}/{num_epochs} - Validation")
     with torch.no_grad():
-        for images, labels in tqdm(val_loader, desc="Validation"):
-            images, labels = images.to(device), labels.to(device)
-            outputs = model(images)
-            val_loss += criterion(outputs, labels).item()
-            _, predicted = torch.max(outputs, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
+        for i, (inputs, labels) in val_progress:
+            inputs = inputs.to(device)
+            labels = labels.to(device)
 
-    val_acc = correct / total
-    val_losses.append(val_loss / len(val_loader))
+            outputs = model(inputs)
+            loss = criterion(outputs, labels)
 
-    print(f"Epoch {epoch+1}: Train Loss={train_losses[-1]:.4f}, Val Loss={val_losses[-1]:.4f}, Val Acc={val_acc:.2%}")
+            val_loss += loss.item() * inputs.size(0)
+            _, predicted = torch.max(outputs.data, 1)
+            total_val += labels.size(0)
+            val_correct += (predicted == labels).sum().item()
 
-    # Save best model
-    if val_acc > best_acc:
-        best_acc = val_acc
-        torch.save(model.state_dict(), "best_model.pth")
+            val_progress.set_postfix({'loss': f'{loss.item():.4f}'})
 
+    val_loss = val_loss / total_val
+    val_accuracy = 100 * val_correct / total_val
+    print(f'Epoch {epoch+1}/{num_epochs}, Validation Loss: {val_loss:.4f}, Validation Accuracy: {val_accuracy:.2f}%')
 
+print("Training finished!")
 
-# Confusion matrix on validation set
-model.eval()
-all_preds = []
-all_labels = []
-
-with torch.no_grad():
-    for images, labels in val_loader:
-        images = images.to(device)
-        outputs = model(images)
-        _, preds = torch.max(outputs, 1)
-        all_preds.extend(preds.cpu().numpy())
-        all_labels.extend(labels.numpy())
-
-# Compute confusion matrix
-cm = confusion_matrix(all_labels, all_preds)
-class_names = train_dataset.classes  # from ImageFolder
-disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=class_names)
-
-# Plot
-fig, ax = plt.subplots(figsize=(8, 6))
-disp.plot(ax=ax, cmap='Blues', xticks_rotation=45)
-plt.title("Confusion Matrix")
-plt.savefig("confusion_matrix.png")
-plt.show()
-
-
-
-# Plot loss curves
-plt.plot(train_losses, label="Train Loss")
-plt.plot(val_losses, label="Val Loss")
-plt.legend()
-plt.title("Loss Curves")
-plt.savefig("loss_plot.png")
-plt.show()
+# You can add code here to save the trained model
+# torch.save(model.state_dict(), 'color_model.pth')
