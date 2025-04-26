@@ -4,8 +4,8 @@ import random
 from tqdm import tqdm
 
 # Paths
-source_dir = r"C:\Users\essayeh.omar_amaris\Desktop\ML model\data\dataset"
-output_dir = r"C:\Users\essayeh.omar_amaris\Desktop\ML model\data\dataset_split"
+source_dir = r"ML model\data\dataset"
+output_dir = r"ML model\data\dataset_split"
 train_ratio = 0.8
 
 # Create target dirs
@@ -26,7 +26,9 @@ for label in os.listdir(source_dir):
     train_files = files[:split_idx]
     val_files = files[split_idx:]
 
-    print(f"\n📂 Splitting {label} - Total: {len(files)} → Train: {len(train_files)}, Val: {len(val_files)}")
+    print(
+        f"\n📂 Splitting {label} - Total: {len(files)} → Train: {len(train_files)}, Val: {len(val_files)}"
+    )
 
     # Copy files
     for f in tqdm(train_files, desc=f"Copying train/{label}"):
