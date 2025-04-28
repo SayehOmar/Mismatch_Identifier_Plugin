@@ -1,23 +1,107 @@
-import cv2
-import numpy as np
+import torch
+import torch.nn as nn
+import torchvision.transforms as transforms
+from PIL import Image
 import os
 import shutil
-import time
 import json
-from PyQt5.QtCore import QObject, pyqtSignal
+import time
+from PyQt5.QtCore import QObject, pyqtSignal, QFileSystemWatcher, QTimer
 
-class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
+
+class ColorFocusedCNN(nn.Module):
+    def __init__(self, num_classes):
+        super(ColorFocusedCNN, self).__init__()
+        self.block1 = nn.Sequential(
+            nn.Conv2d(3, 32, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.block2 = nn.Sequential(
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.block3 = nn.Sequential(
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+        )
+        self.color_attention = nn.Sequential(
+            nn.Conv2d(128, 128, kernel_size=1), nn.BatchNorm2d(128), nn.Sigmoid()
+        )
+        self.gap = nn.AdaptiveAvgPool2d((1, 1))
+        self.dropout = nn.Dropout(0.3)
+        self.fc = nn.Linear(128, num_classes)
+
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        attention = self.color_attention(x)
+        x = x * attention
+        x = self.gap(x)
+        x = x.view(x.size(0), -1)
+        x = self.dropout(x)
+        x = self.fc(x)
+        return x
+
+
+class MismatchIdentifierLogic(QObject):
     log_signal = pyqtSignal(str)  # Define a signal for logging
+    classification_complete_signal = pyqtSignal(str, str, float)  # filename, category, confidence
 
-    def __init__(self, input_folder="Output_images", output_folder="Classified_images"):
+    def __init__(self, input_folder="Output_images", output_folder="Classified_images", model_path=None):
+        """
+        Initialize the MismatchIdentifierLogic class.
+        
+        Args:
+            input_folder (str): Directory containing images to process. Default is "Output_images".
+            output_folder (str): Base directory for output folders. Default is "Classified_images".
+            model_path (str, optional): Path to the model file. If None, uses 'best_color_model.pth' in the current directory.
+        """
         super().__init__()
         self.input_folder = input_folder
         self.output_folder = output_folder
-        # Create output folders
-        self.categories = ["no_cartography_error",  "cartography_error"]
+        self.class_names = ["cartography_error", "no_cartography_error"]
+        self.processed_files = set()  # Keep track of processed files
+        self.is_watching = False
+        
+        # Set model path
+        if model_path is None:
+            self.model_path = os.path.join(os.path.dirname(__file__), "best_color_model.pth")
+        else:
+            self.model_path = model_path
+        
+        # Create output directories if they don't exist
         self._create_folders()
+        
+        # Load model
+        self.model = self._load_model()
+        
+        # Set up image transformations
+        self.image_size = 224
+        self.transforms = transforms.Compose([
+            transforms.Resize((self.image_size, self.image_size)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        
+        # Initialize file watcher
+        self.watcher = QFileSystemWatcher()
+        self.watcher.directoryChanged.connect(self.on_directory_changed)
+        
+        # Timer for periodic scans (as a backup to the watcher)
+        self.scan_timer = QTimer()
+        self.scan_timer.timeout.connect(self.scan_for_new_files)
+        
+        self.log("MismatchIdentifierLogic initialized")
 
     def log(self, message):
+        """Log a message both via signal and to console"""
         # IMPORTANT: First emit the signal, then print
         try:
             self.log_signal.emit(str(message))
@@ -27,163 +111,213 @@ class MismatchIdentifier(QObject):  # Inherit from QObject to use signals
         # Then print if needed
         print(message)
 
-
     def _create_folders(self):
-        for category in self.categories:
+        """Create output folders for each class"""
+        for category in self.class_names:
             os.makedirs(os.path.join(self.output_folder, category), exist_ok=True)
 
-    def calculate_pixels_per_meter(self):
-        """Calculates the pixels per meter for the given image."""
-        pixels_per_meter = 2000 / 15
-        return pixels_per_meter
-
-    def check_overlap_proximity(self, mask1, mask2, distance_threshold):
-        """
-        Checks if every pixel in mask1 has at least one pixel of mask2 within a given radius.
-        Returns True if all pixels in mask1 has at least one pixel of mask2 within distance_threshold.
-        """
-        # If either mask is empty, there can't be overlap
-        if np.sum(mask1) == 0 or np.sum(mask2) == 0:
-            return False
-
-        # Dilate mask2 to create a region that includes all pixels within distance_threshold
-        kernel = np.ones((2 * distance_threshold + 1, 2 * distance_threshold + 1), np.uint8)
-        dilated_mask2 = cv2.dilate(mask2, kernel, iterations=1)
-
-        # Find all pixels in mask1
-        mask1_pixels = np.where(mask1 > 0)
-
-        # Check if all pixels in mask1 have at least one pixel of mask2 within distance_threshold
-        for y, x in zip(mask1_pixels[0], mask1_pixels[1]):
-            # If the corresponding pixel in dilated_mask2 is 0, then there's no pixel of mask2 within distance_threshold
-            if dilated_mask2[y, x] == 0:
-                return False
-
-        return True
-
-    def calculate_min_distance_efficient(self, mask1, mask2):
-        """Calculates an efficient minimum pixel distance between two masks using distance transform."""
-        if np.sum(mask1) == 0 or np.sum(mask2) == 0:
-            return float('inf')
-
-        dist_transform1 = cv2.distanceTransform(255 - mask1, cv2.DIST_L2, 5)
-        min_dist1 = np.min(dist_transform1[mask2 > 0]) if np.any(mask2 > 0) else float('inf')
-
-        dist_transform2 = cv2.distanceTransform(255 - mask2, cv2.DIST_L2, 5)
-        min_dist2 = np.min(dist_transform2[mask1 > 0]) if np.any(mask1 > 0) else float('inf')
-
-        return min(min_dist1, min_dist2)
-
+    def _load_model(self):
+        """Load the PyTorch model."""
+        try:
+            model = ColorFocusedCNN(len(self.class_names))
+            model.load_state_dict(torch.load(self.model_path, map_location=torch.device("cpu")))
+            model.eval()
+            return model
+        except Exception as e:
+            self.log(f"Error loading model: {e}")
+            return None
+    
+    def start_watching(self):
+        """Start watching the input folder for new images"""
+        if not self.is_watching:
+            try:
+                # Ensure folder exists before watching
+                os.makedirs(self.input_folder, exist_ok=True)
+                
+                # Add the folder to the watcher
+                self.watcher.addPath(self.input_folder)
+                
+                # Start the backup timer (scan every 2 seconds)
+                self.scan_timer.start(2000)
+                
+                self.is_watching = True
+                self.log(f"🔍 Started watching folder: {self.input_folder}")
+                
+                # Process any existing files
+                self.scan_for_new_files()
+                
+            except Exception as e:
+                self.log(f"Error starting watcher: {e}")
+    
+    def stop_watching(self):
+        """Stop watching the input folder"""
+        if self.is_watching:
+            try:
+                self.watcher.removePath(self.input_folder)
+                self.scan_timer.stop()
+                self.is_watching = False
+                self.log(f"Stopped watching folder: {self.input_folder}")
+            except Exception as e:
+                self.log(f"Error stopping watcher: {e}")
+    
+    def on_directory_changed(self, path):
+        """Called when the directory changes (new files added)"""
+        self.log(f"Directory change detected in: {path}")
+        self.scan_for_new_files()
+    
+    def scan_for_new_files(self):
+        """Scan for new files in the input folder"""
+        if not os.path.exists(self.input_folder):
+            return
+            
+        for filename in os.listdir(self.input_folder):
+            if filename.lower().endswith((".png", ".jpg", ".jpeg")) and filename not in self.processed_files:
+                image_path = os.path.join(self.input_folder, filename)
+                
+                # Check if file is ready/complete by testing if we can open it
+                try:
+                    with open(image_path, "rb") as f:
+                        pass
+                    
+                    # Small delay to ensure file is completely written
+                    time.sleep(0.1)
+                    
+                    # Process the file
+                    self.process_single_image(image_path)
+                    self.processed_files.add(filename)
+                except:
+                    # File is probably still being written
+                    pass
+    
     def classify_image(self, image_path):
-        """Classifies an image based on the final logic."""
-        image = cv2.imread(image_path)
-        if image is None:
-            return "random", {"reason": "Could not read image."}
-
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-        # Define color masks
-        orange_mask = cv2.inRange(hsv, np.array([10, 150, 150]), np.array([25, 255, 255]))
-        blue_mask = cv2.inRange(hsv, np.array([110, 150, 150]), np.array([130, 255, 255]))
-        red_mask = cv2.inRange(hsv, np.array([0, 150, 150]), np.array([10, 255, 255]))
-        green_mask = cv2.inRange(hsv, np.array([50, 150, 150]), np.array([70, 255, 255]))
-
-        # Check presence of colors - convert NumPy bool_ to Python bool
-        green_present = bool(np.sum(green_mask) > 0)
-        red_present = bool(np.sum(red_mask) > 0)
-        blue_present = bool(np.sum(blue_mask) > 0)
-        orange_present = bool(np.sum(orange_mask) > 0)
+        """
+        Classify an image using the ML model.
         
-        report = {
-            "green_present": green_present,
-            "red_present": red_present, 
-            "blue_present": blue_present,
-            "orange_present": orange_present
-        }
-
-        # If no cables are present, classify as random
-        if not (green_present or red_present):
-            report["reason"] = "No cables (green or red) detected."
-            return "random", report
-
-        # Check overlaps - convert NumPy bool_ to Python bool
-        cables_overlap = False
-        buildings_overlap = False
-        
-        if green_present and red_present:
-            cables_overlap = bool(self.check_overlap_proximity(red_mask, green_mask, 3))
-        
-        if blue_present and orange_present:
-            buildings_overlap = bool(self.check_overlap_proximity(orange_mask, blue_mask, 3))
-        
-        report["cables_overlap"] = cables_overlap
-        report["buildings_overlap"] = buildings_overlap
-
-        # Cartography error cases
-        if blue_present and orange_present and not buildings_overlap:
-            report["reason"] = "Blue building is not covering orange building."
-            return "cartography_error", report
-        
-        if green_present and red_present and cables_overlap and not buildings_overlap:
-            report["reason"] = "Cables overlap but buildings don't overlap."
-            return "cartography_error", report
-        
-        # No cartography error cases
-        if green_present and red_present and cables_overlap and buildings_overlap:
-            report["reason"] = "Cables overlap and buildings overlap correctly."
-            return "no_cartography_error", report
-        
-        # For the second image case (only blue and green)
-        if blue_present and green_present and not red_present and not orange_present:
-            report["reason"] = "Only blue buildings and green cables present, properly aligned."
-            return "no_cartography_error", report
-        
-        # Default: needs human verification
-        report["reason"] = "Case not covered by defined rules."
-        return "please_check", report
-        
-        
-
+        Args:
+            image_path (str): Path to the image file.
+            
+        Returns:
+            tuple: (predicted_class_name, report dictionary with confidence and other details)
+        """
+        try:
+            # Check if model is loaded
+            if self.model is None:
+                self.log("Model not loaded. Please initialize the class properly.")
+                return "random", {"reason": "Model not loaded properly."}
+                
+            # Load and preprocess the image
+            image = Image.open(image_path).convert("RGB")
+            image_tensor = self.transforms(image).unsqueeze(0)  # Add batch dimension
+            
+            # Make the prediction
+            with torch.no_grad():
+                output = self.model(image_tensor)
+                probabilities = torch.nn.functional.softmax(output, dim=1)[0]
+                confidence, predicted_class_index = torch.max(probabilities, 0)
+                predicted_class_name = self.class_names[predicted_class_index.item()]
+                confidence_score = confidence.item() * 100
+            
+            # Create report dictionary
+            report = {
+                "confidence": confidence_score,
+                "reason": f"ML model classified as {predicted_class_name} with {confidence_score:.2f}% confidence."
+            }
+                
+            return predicted_class_name, report
+            
+        except FileNotFoundError:
+            self.log(f"Error: Image file not found - {image_path}")
+            return "random", {"reason": "Could not read image - file not found."}
+        except Exception as e:
+            self.log(f"An error occurred while classifying {image_path}: {e}")
+            return "random", {"reason": f"Error during classification: {str(e)}"}
 
     def process_images(self):
-        """Processes all images in the input folder and classifies them, moving JSON files."""
-        self.log("🔍 Starting image classification with new logic (moving JSONs)...")
+        """
+        Start the real-time processing of images in the input folder.
+        This method now starts the watcher instead of processing all at once.
+        """
+        self.log("🔍 Starting real-time image classification...")
+        self.start_watching()
+        return {"status": "watching"}
 
-        for filename in os.listdir(self.input_folder):
-            if not filename.lower().endswith((".png", ".jpg", ".jpeg")):
-                continue  # Skip non-image files
-
-            image_path = os.path.join(self.input_folder, filename)
+    def process_single_image(self, image_path):
+        """
+        Process a single image and its corresponding JSON file.
+        
+        Args:
+            image_path (str): Path to the image file.
+            
+        Returns:
+            tuple: (predicted_class_name, confidence_score, destination_path) 
+                  or (None, None, None) if an error occurs.
+        """
+        try:
+            filename = os.path.basename(image_path)
             category, report = self.classify_image(image_path)
-            self.log(f"Image {filename} classified as: {category} - Reason: {report.get('reason', 'N/A')}, Building Distance: {report.get('building_distance_meters', 'N/A')}, Cable Overlap: {report.get('cable_overlap', 'N/A')}, Building Overlap: {report.get('building_overlap', 'N/A')}")
-
+            confidence = report.get('confidence', 0)
+            
+            # Define destination paths
             destination_folder = os.path.join(self.output_folder, category)
             os.makedirs(destination_folder, exist_ok=True)
-            image_destination = os.path.join(destination_folder, filename)
-            shutil.move(image_path, image_destination)
-
-            # Move the corresponding JSON file
-            json_filename = filename.rsplit(".", 1)[0] + ".json"
+            dest_image_path = os.path.join(destination_folder, filename)
+            
+            # Move the image file
+            shutil.move(image_path, dest_image_path)
+            self.log(f"Image '{filename}' classified as: {category} with {confidence:.2f}% confidence")
+            
+            # Process corresponding JSON file
+            json_filename = os.path.splitext(filename)[0] + ".json"
             json_path = os.path.join(self.input_folder, json_filename)
-            report_destination = os.path.join(destination_folder, json_filename)
-
+            dest_json_path = os.path.join(destination_folder, json_filename)
+            
             if os.path.exists(json_path):
                 try:
                     with open(json_path, 'r') as f:
                         existing_data = json.load(f)
                     existing_data["analysis_report"] = report
-                    with open(report_destination, 'w') as f:
+                    with open(dest_json_path, 'w') as f:
                         json.dump(existing_data, f, indent=4)
-                    self.log(f"Moved and updated existing {json_filename} to {category} with analysis report.")
-                    os.remove(json_path) # Remove original JSON after processing
+                    self.log(f"Updated and moved JSON to {category} folder")
+                    os.remove(json_path)  # Remove original JSON after processing
                 except json.JSONDecodeError:
-                    self.log(f"Error decoding JSON file: {json_path}. Saving new report.")
-                    with open(report_destination, 'w') as f:
+                    self.log(f"Error decoding JSON. Creating new report file.")
+                    with open(dest_json_path, 'w') as f:
                         json.dump({"analysis_report": report}, f, indent=4)
-                    shutil.move(json_path, report_destination.replace(".json", "_original.json")) # Rename original
+                    os.remove(json_path)  # Remove original JSON after processing
             else:
-                with open(report_destination, 'w') as f:
+                self.log(f"No JSON found for {filename}. Creating new report file.")
+                with open(dest_json_path, 'w') as f:
                     json.dump({"analysis_report": report}, f, indent=4)
-                self.log(f"Saved analysis report to {json_filename} in {category}.")
+            
+            # Emit signal for other components to respond to
+            self.classification_complete_signal.emit(filename, category, confidence)
+            
+            return category, confidence, dest_image_path
+            
+        except Exception as e:
+            self.log(f"Error processing image {image_path}: {e}")
+            return None, None, None
 
-        self.log("✅ Image classification completed with new logic (JSONs moved).")
+
+# Example usage if this file is run directly
+if __name__ == "__main__":
+    from PyQt5.QtWidgets import QApplication
+    import sys
+    
+    app = QApplication(sys.argv)
+    
+    # Create an instance of the classifier
+    identifier = MismatchIdentifierLogic(
+        input_folder="Output_images",
+        output_folder="Classified_images"
+    )
+    
+    # Connect to log signal for console output
+    identifier.log_signal.connect(print)
+    
+    # Start watching for images
+    identifier.process_images()
+    
+    # Run the event loop to process file events
+    sys.exit(app.exec_())
