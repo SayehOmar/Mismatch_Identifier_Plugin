@@ -4,7 +4,7 @@ from PyQt5.QtCore import QSize, QCoreApplication
 from PyQt5.QtGui import QImage, QPainter, QColor
 from qgis.core import *
 from qgis.utils import iface
-
+import time
 
 class GridCapture:
     def __init__(self, output_folder):
@@ -42,8 +42,8 @@ class GridCapture:
         self.map_settings.setBackgroundColor(QColor(255, 255, 255))
 
         # Set output image size - reduce for faster processing
-        self.image_width = 2000
-        self.image_height = 2000
+        self.image_width = 1500
+        self.image_height = 1500
         self.map_settings.setOutputSize(QSize(self.image_width, self.image_height))
 
         # Set renderer flags for better performance
@@ -57,44 +57,42 @@ class GridCapture:
             print("⚠️ Cannot proceed without a valid grid layer.")
             return
 
-        # Find the index of the 'hex_id' field
         grid_id_field_index = self.grid_layer.fields().indexOf('hex_id')
         if grid_id_field_index == -1:
             field_names = [field.name() for field in self.grid_layer.fields()]
-            print("❌ Field 'grid_id' not found in 'Filtered_Grid' layer.")
+            print("❌ Field 'hex_id' not found in 'Filtered_Grid' layer.")
             print("   Available fields are:", field_names)
-            print("💡 Did you load a temporary memory layer? Make sure you're using the saved shapefile with attributes.")
             return
 
         total_features = self.grid_layer.featureCount()
         print(f"🔍 Found {total_features} grid cells to process")
 
-        # Process features in batches to avoid slow GUI updates
         batch_size = 10
         feature_counter = 0
+        processed_cells = 0
+        time_stamps = []
+        start_time = time.time()
+        last_update_time = start_time
+        last_processed_time = start_time
 
         for feature in self.grid_layer.getFeatures():
             feature_counter += 1
             geom = feature.geometry()
             extent = geom.boundingBox()
-
-            # Get the 'grid_id' attribute value
             grid_cell_id = feature.attributes()[grid_id_field_index]
 
-            # Skip processing if output file already exists (for resuming interrupted processes)
             image_path = os.path.join(self.output_folder, f"cell_{grid_cell_id}.png")
             if os.path.exists(image_path):
-                print(f"📋 Cell {grid_cell_id} already processed, skipping ({feature_counter}/{total_features})")
                 continue
 
-            self.map_settings.setExtent(extent)
+            if processed_cells < 5:
+                t0 = time.time()
 
-            # Create image and painter
+            self.map_settings.setExtent(extent)
             image = QImage(self.image_width, self.image_height, QImage.Format_RGB888)
             image.fill(QColor(255, 255, 255))
             painter = QPainter(image)
 
-            # Use parallel rendering for better performance
             map_renderer_job = QgsMapRendererParallelJob(self.map_settings)
             map_renderer_job.start()
             map_renderer_job.waitForFinished()
@@ -102,8 +100,6 @@ class GridCapture:
             rendered_image = map_renderer_job.renderedImage()
             painter.drawImage(0, 0, rendered_image)
             painter.end()
-
-            # Save image and metadata
             image.save(image_path)
 
             metadata = {
@@ -117,15 +113,33 @@ class GridCapture:
                 "crs": self.grid_layer.crs().authid(),
                 "layers": [layer.name() for layer in self.other_layers],
             }
-
             metadata_path = os.path.join(self.output_folder, f"cell_{grid_cell_id}.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=4)
 
-            print(f"✅ Captured image for Cell {grid_cell_id} ({feature_counter}/{total_features})")
+            processed_cells += 1
+            last_processed_time = time.time()
 
-            if feature_counter % batch_size == 0:
+            if processed_cells <= 5:
+                t1 = time.time()
+                time_stamps.append(t1 - t0)
+
+            if processed_cells % batch_size == 0:
                 QCoreApplication.processEvents()
 
-        print("🎉 All grid cells captured successfully!")
+            # Every 5 minutes, print status and ETA
+            current_time = time.time()
+            if current_time - last_update_time >= 300:  # 5 minutes
+                if processed_cells >= 5:
+                    avg_time = sum(time_stamps) / len(time_stamps)
+                    remaining = total_features - processed_cells
+                    eta_minutes = (remaining * avg_time) / 60
+                    print(f"🕐 {processed_cells}/{total_features} cells done. ETA: {eta_minutes:.1f} minutes.")
+                else:
+                    print(f"🕐 {processed_cells}/{total_features} cells done. Estimating time...")
 
+                if current_time - last_processed_time >= 300:
+                    print("⚠️ No cells processed in the last 5 minutes. Possible crash or hang.")
+                last_update_time = current_time
+
+        print("🎉 All grid cells captured successfully!")
