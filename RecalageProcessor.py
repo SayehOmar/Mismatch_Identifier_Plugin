@@ -91,8 +91,7 @@ class BatchRecalageProcessor:
 
         if self.merged_layer:
             self.save_merged_layer()
-        else:
-            print("No features collected. Nothing to save.")
+       
 
     def save_merged_layer(self):
         os.makedirs(self.output_folder, exist_ok=True)
