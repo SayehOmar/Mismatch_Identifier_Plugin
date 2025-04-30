@@ -2,7 +2,7 @@ import os
 import sys
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets, QtCore
-
+from qgis.core import QgsVectorLayer,QgsProject
 from .GridCapture import GridCapture
 from .File_loader import FileLoader
 from .grid_filter import GridFilter
@@ -10,7 +10,7 @@ from .mismatch_identifier_Logic import MismatchIdentifierLogic
 from .stream_redirector import StreamRedirector
 from .white_remover import WhitePixelRemover
 from .RecalageProcessor import BatchRecalageProcessor
-
+from .GridCapture_resume import GridCaptureResume
 FORM_CLASS, _ = uic.loadUiType(
     os.path.join(os.path.dirname(__file__), "Mismatch_Identifier_Plugin_dialog_base.ui")
 )
@@ -43,6 +43,9 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
         
         # Connect the Start Process button
         self.Start_Process.clicked.connect(self.on_start_process_clicked)
+        
+        # Connect the Resume button 
+        self.Resume.clicked.connect(self.resumeCapturing)
 
         # Create a FileLoader instance
         self.file_loader = FileLoader(self)
@@ -128,6 +131,38 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
             
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "❌ Error", f"Failed to capture grid cells: {str(e)}")
+    
+
+
+    def resumeCapturing(self):
+        try:
+            # Get plugin output folder
+            plugin_dir = os.path.dirname(os.path.abspath(__file__))
+            output_folder = os.path.join(plugin_dir, "GridCaptures")
+
+            # Build the path to grid.shp in the user's Documents folder
+            home_dir = os.path.expanduser("~")
+            grid_path = os.path.join(home_dir, "Documents", "Grid", "grid.shp")
+
+            if not os.path.exists(grid_path):
+                QtWidgets.QMessageBox.warning(self, "⚠️ Missing Grid", f"Grid file not found at:\n{grid_path}")
+                return
+
+            # Load the grid shapefile into QGIS
+            grid_layer = QgsVectorLayer(grid_path, "Filtered_Grid", "ogr")
+            if not grid_layer.isValid():
+                QtWidgets.QMessageBox.critical(self, "❌ Error", "Failed to load the grid shapefile.")
+                return
+
+            QgsProject.instance().addMapLayer(grid_layer)
+
+            
+            capturer = GridCaptureResume(output_folder)
+            capturer.capture_remaining_cells()
+
+        except Exception as e:
+            QtWidgets.QMessageBox.critical(self, "❌ Error", f"Failed to capture grid cells: {str(e)}")
+    
 
     def setup_classifier(self):
         """Initialize and start the classifier"""

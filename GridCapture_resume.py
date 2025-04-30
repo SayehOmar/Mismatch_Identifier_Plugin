@@ -8,7 +8,7 @@ from PyQt5.QtGui import QImage, QPainter, QColor
 from qgis.core import *
 from qgis.utils import iface
 
-class GridCapture:
+class GridCaptureResume:
     def __init__(self, output_folder):
         self.output_folder = output_folder
 
@@ -52,7 +52,7 @@ class GridCapture:
         free_mb = psutil.virtual_memory().available / (1024 * 1024)
         return round(used_mb, 2), round(free_mb, 2)
 
-    def capture_grid_cells(self):
+    def capture_remaining_cells(self):
         if not self.grid_layer:
             print("⚠️ No valid grid layer.")
             return
@@ -62,30 +62,36 @@ class GridCapture:
             print("❌ Field 'hex_id' not found.")
             return
 
+        # Scan for already captured images
+        existing_images = set()
+        for file in os.listdir(self.output_folder):
+            if file.startswith("cell_") and file.endswith(".png"):
+                grid_id = file.replace("cell_", "").replace(".png", "")
+                existing_images.add(grid_id)
+
         total_features = self.grid_layer.featureCount()
-        print(f"🔍 Processing {total_features} grid cells")
+        print(f"🔁 Resuming capture | Already done: {len(existing_images)} | Total grid cells: {total_features}")
 
         batch_size = 10
-        feature_counter = 0
         processed_cells = 0
+        new_cells = 0
         time_stamps = []
         start_time = time.time()
         last_update_time = start_time
         last_processed_time = start_time
 
         for feature in self.grid_layer.getFeatures():
-            feature_counter += 1
-            geom = feature.geometry()
-            extent = geom.boundingBox()
-            grid_cell_id = feature.attributes()[grid_id_field_index]
-
-            image_path = os.path.join(self.output_folder, f"cell_{grid_cell_id}.png")
-            if os.path.exists(image_path):
+            grid_cell_id = str(feature.attributes()[grid_id_field_index])
+            if grid_cell_id in existing_images:
                 continue
 
-            if processed_cells < 5:
-                t0 = time.time()
+            new_cells += 1
+            geom = feature.geometry()
+            extent = geom.boundingBox()
 
+            image_path = os.path.join(self.output_folder, f"cell_{grid_cell_id}.png")
+
+            # Capture logic
             self.map_settings.setExtent(extent)
             image = QImage(self.image_width, self.image_height, QImage.Format_RGB888)
             image.fill(QColor(255, 255, 255))
@@ -100,6 +106,7 @@ class GridCapture:
             painter.end()
             image.save(image_path)
 
+            # Save metadata
             metadata = {
                 "grid_id": grid_cell_id,
                 "extent": {
@@ -116,37 +123,35 @@ class GridCapture:
                 json.dump(metadata, f, indent=4)
 
             processed_cells += 1
-            last_processed_time = time.time()
-
             if processed_cells <= 5:
-                t1 = time.time()
-                time_stamps.append(t1 - t0)
+                time_stamps.append(time.time() - start_time)
 
             if processed_cells % batch_size == 0:
                 QCoreApplication.processEvents()
-
-                # Optional: run garbage collection and log memory difference
                 before_gc = self.memory_stats()[0]
                 gc.collect()
                 after_gc = self.memory_stats()[0]
                 recovered = round(before_gc - after_gc, 2)
-                
 
-            # Every 5 minutes, print memory usage and ETA
             current_time = time.time()
             if current_time - last_update_time >= 300:
                 used_mem, free_mem = self.memory_stats()
                 if processed_cells >= 5:
                     avg_time = sum(time_stamps) / len(time_stamps)
-                    remaining = total_features - processed_cells
+                    remaining = total_features - len(existing_images) - processed_cells
                     eta_minutes = (remaining * avg_time) / 60
-                    print(f"♻️ Garbage collection done | Memory recovered: {recovered} MB")
-                    print(f"🕐 {processed_cells}/{total_features} done | ETA: {eta_minutes:.1f} min | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
+                    print(f"♻️ GC done | Recovered: {recovered} MB")
+                    print(f"🕐 {processed_cells} new | ETA: {eta_minutes:.1f} min | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
                 else:
-                    print(f"🕐 {processed_cells}/{total_features} done | Estimating ETA... | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
+                    print(f"🕐 {processed_cells} new | Estimating ETA... | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
 
                 if current_time - last_processed_time >= 300:
-                    print("⚠️ No cells processed in the last 5 minutes. Potential crash or hang.")
+                    print("⚠️ No cells processed in 5 min. Potential crash/hang.")
                 last_update_time = current_time
 
-        print("🎉 All grid cells captured successfully!")
+            # Optional restart safety
+            if processed_cells >= 8000:
+                print("🛑 Processed 8000 cells, stopping to avoid crash. Please re-run to continue.")
+                break
+
+        print(f"✅ Resume complete. {processed_cells} new cells captured.")
