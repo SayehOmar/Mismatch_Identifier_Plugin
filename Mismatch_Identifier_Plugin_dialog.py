@@ -2,15 +2,15 @@ import os
 import sys
 from qgis.PyQt import uic
 from qgis.PyQt import QtWidgets, QtCore
-from qgis.core import QgsVectorLayer,QgsProject
+from qgis.core import QgsVectorLayer,QgsProject,QgsApplication
 from .GridCapture import GridCapture
 from .File_loader import FileLoader
 from .grid_filter import GridFilter
 from .mismatch_identifier_Logic import MismatchIdentifierLogic
 from .stream_redirector import StreamRedirector
-from .white_remover import WhitePixelRemover
+
 from .RecalageProcessor import BatchRecalageProcessor
-from .GridCapture_resume import GridCaptureResume
+
 FORM_CLASS, _ = uic.loadUiType(
     os.path.join(os.path.dirname(__file__), "Mismatch_Identifier_Plugin_dialog_base.ui")
 )
@@ -135,34 +135,24 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     def resumeCapturing(self):
+        """Resume recalage processing from specified folder."""
+        plugin_dir = os.path.dirname(os.path.abspath(__file__))
+        json_folder = os.path.join(plugin_dir, "Classified_images", "cartography_error")
+
+        output_folder = self.lineEdit_4.text().strip()
         try:
-            # Get plugin output folder
-            plugin_dir = os.path.dirname(os.path.abspath(__file__))
-            output_folder = os.path.join(plugin_dir, "GridCaptures")
-
-            # Build the path to grid.shp in the user's Documents folder
-            home_dir = os.path.expanduser("~")
-            grid_path = os.path.join(home_dir, "Documents", "Grid", "grid.shp")
-
-            if not os.path.exists(grid_path):
-                QtWidgets.QMessageBox.warning(self, "⚠️ Missing Grid", f"Grid file not found at:\n{grid_path}")
-                return
-
-            # Load the grid shapefile into QGIS
-            grid_layer = QgsVectorLayer(grid_path, "Filtered_Grid", "ogr")
-            if not grid_layer.isValid():
-                QtWidgets.QMessageBox.critical(self, "❌ Error", "Failed to load the grid shapefile.")
-                return
-
-            QgsProject.instance().addMapLayer(grid_layer)
-
-            
-            capturer = GridCaptureResume(output_folder)
-            capturer.capture_remaining_cells()
-
+           
+            # Create the recalage TASK
+             # Instantiate the processor and get the QgsTask from .run()
+            processor = BatchRecalageProcessor(json_folder, output_folder)
+            task = processor.run() 
+            QgsApplication.taskManager().addTask(task)
+            self.safe_append_to_grid_creation_browser("task resumed")
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "❌ Error", f"Failed to capture grid cells: {str(e)}")
-    
+
+          
+
 
     def setup_classifier(self):
         """Initialize and start the classifier"""
@@ -188,40 +178,7 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
         except Exception as e:
             self.safe_append_to_grid_creation_browser(f"❌ Error setting up classifier: {str(e)}")
 
-    def on_start_process_clicked(self):
-        """Main button logic"""
-        try:
-            plugin_dir = os.path.dirname(os.path.abspath(__file__))
-            input_folder = os.path.join(plugin_dir, "GridCaptures")
-            
-            
-            
-            # Generate grid and capture images
-            self.on_generate_grid()
-            self.on_capture_grid_clicked()
-
-            # Set up white pixel removal process
-            #self.safe_append_to_grid_creation_browser("🔄 Starting white pixel removal for captured images...")
-            
-            
-            '''
-            for filename in os.listdir(input_folder):
-                if filename.lower().endswith(".png"):
-                    file_path = os.path.join(input_folder, filename)
-                    try:
-                        # The classifier will automatically pick up and process these files
-                        # as they are created/modified by the white pixel remover
-                        remover = WhitePixelRemover(input_path=file_path, output_path=file_path)
-                        remover.process()
-                        self.safe_append_to_grid_creation_browser(f"✅ Processed white pixels: {filename}")
-                    except Exception as e:
-                        self.safe_append_to_grid_creation_browser(f"❌ Failed to process {filename}: {str(e)}")
-
-            self.safe_append_to_grid_creation_browser("✅ White pixel removal completed!")
-            self.safe_append_to_grid_creation_browser("🔍 Classification will continue in background...")
-            ''' 
-
-            # Set up and start the classifier FIRST before generating images
+        # Set up and start the classifier FIRST before generating images
             self.setup_classifier()
 
             # Start the recalage process
@@ -232,17 +189,50 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
                 #  Get output folder from the QLineEdit
                 output_folder = self.lineEdit_4.text().strip()
 
-                recalage_processor = BatchRecalageProcessor(json_folder=json_folder, output_folder=output_folder)
-                recalage_processor.run()
+                task = BatchRecalageProcessor("Resume Recalage Processing", json_folder, output_folder)
+                QgsApplication.taskManager().addTask(task)
                 self.safe_append_to_grid_creation_browser("✅ Recalage process completed!")
             except Exception as e:
                 self.safe_append_to_grid_creation_browser(f"❌ Failed during recalage processing: {str(e)}")
 
 
 
+    def on_start_process_clicked(self):
+        """Main button logic"""
+        try:
+            plugin_dir = os.path.dirname(os.path.abspath(__file__))
+            input_folder = os.path.join(plugin_dir, "GridCaptures")
+            output_folder = os.path.join(plugin_dir, "Classified_images")
+
+            # Generate grid and capture images
+            self.on_generate_grid()
+            self.on_capture_grid_clicked()
+
+            # Set up and start the classifier FIRST before generating images
+            self.setup_classifier()
+
+            # Start the recalage process
+            self.safe_append_to_grid_creation_browser("🔄 Starting recalage process...")
+
+            try:
+                json_folder = os.path.join(plugin_dir, "Classified_images", "cartography_error")
+                #  Get output folder from the QLineEdit
+                output_folder_path = self.lineEdit_4.text().strip()
+
+                # Create the recalage TASK
+                processor = BatchRecalageProcessor(json_folder, output_folder_path)
+                task = processor.run() 
+                QgsApplication.taskManager().addTask(task)
+                self.safe_append_to_grid_creation_browser("✅ Recalage process completed!")
+            except Exception as e:
+                self.safe_append_to_grid_creation_browser(f"❌ Failed during recalage processing: {str(e)}")
+
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "❌ Error", f"Process failed: {str(e)}")
 
+
+
+           
     def closeEvent(self, event):
         """Clean up on close"""
         if self.classifier:

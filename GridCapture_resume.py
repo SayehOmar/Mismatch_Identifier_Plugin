@@ -44,6 +44,20 @@ class GridCaptureResume:
         self.map_settings.setFlag(QgsMapSettings.Flag.Antialiasing, False)
         self.map_settings.setFlag(QgsMapSettings.Flag.UseAdvancedEffects, False)
 
+        self.log_file = os.path.join(self.output_folder, "log.txt")
+        self.start_from_capture_co = None
+        if os.path.exists(self.log_file):
+            try:
+                with open(self.log_file, "r") as f:
+                    log_data = f.readline().strip()
+                    if log_data.startswith("Last capture_co:"):
+                        self.start_from_capture_co = log_data.split(":")[1].strip()
+                        print(f"📄 Resuming from last capture_co: {self.start_from_capture_co}")
+                    else:
+                        print("⚠️ Could not parse 'Last capture_co' from log.txt. Starting from the beginning.")
+            except Exception as e:
+                print(f"⚠️ Could not read log.txt: {e}. Starting from the beginning.")
+
         print("✅ Map settings initialized")
 
     def memory_stats(self):
@@ -57,19 +71,24 @@ class GridCaptureResume:
             print("⚠️ No valid grid layer.")
             return
 
-        grid_id_field_index = self.grid_layer.fields().indexOf('hex_id')
-        if grid_id_field_index == -1:
-            print("❌ Field 'hex_id' not found.")
+        hex_id_index = self.grid_layer.fields().indexOf('hex_id')
+        capture_co_index = self.grid_layer.fields().indexOf('capture_co')
+
+        if hex_id_index == -1 or capture_co_index == -1:
+            print("❌ Required fields 'hex_id' or 'capture_co' not found.")
             return
 
-        # Scan for already captured images
+        # Sort features by capture_co
+        features = sorted(self.grid_layer.getFeatures(), key=lambda f: f['capture_co'])
+        total_features = len(features)
+        print(f"🔍 Processing {total_features} grid cells by 'capture_co'")
+
         existing_images = set()
         for file in os.listdir(self.output_folder):
             if file.startswith("cell_") and file.endswith(".png"):
                 grid_id = file.replace("cell_", "").replace(".png", "")
                 existing_images.add(grid_id)
 
-        total_features = self.grid_layer.featureCount()
         print(f"🔁 Resuming capture | Already done: {len(existing_images)} | Total grid cells: {total_features}")
 
         batch_size = 10
@@ -79,19 +98,36 @@ class GridCaptureResume:
         start_time = time.time()
         last_update_time = start_time
         last_processed_time = start_time
+        last_capture_co = None
+        capture_limit = 8000
+        started_resuming = False
 
-        for feature in self.grid_layer.getFeatures():
-            grid_cell_id = str(feature.attributes()[grid_id_field_index])
-            if grid_cell_id in existing_images:
-                continue
-
-            new_cells += 1
+        for feature in features:
             geom = feature.geometry()
             extent = geom.boundingBox()
+            hex_id = feature['hex_id']
+            capture_co = feature['capture_co']
+            last_capture_co = capture_co
 
-            image_path = os.path.join(self.output_folder, f"cell_{grid_cell_id}.png")
+            image_path = os.path.join(self.output_folder, f"cell_{hex_id}.png")
+            if os.path.exists(image_path):
+                continue
 
-            # Capture logic
+            if self.start_from_capture_co and not started_resuming:
+                if capture_co == self.start_from_capture_co:
+                    started_resuming = True
+                continue
+            elif self.start_from_capture_co and started_resuming is False:
+                # This should ideally not be reached, but as a safety:
+                continue
+
+            if new_cells >= capture_limit:
+                print(f"🛑 Reached capture limit of {capture_limit} new cells. Stopping.")
+                break
+
+            if processed_cells < 5:
+                t0 = time.time()
+
             self.map_settings.setExtent(extent)
             image = QImage(self.image_width, self.image_height, QImage.Format_RGB888)
             image.fill(QColor(255, 255, 255))
@@ -105,10 +141,11 @@ class GridCaptureResume:
             painter.drawImage(0, 0, rendered_image)
             painter.end()
             image.save(image_path)
+            new_cells += 1
 
-            # Save metadata
             metadata = {
-                "grid_id": grid_cell_id,
+                "grid_id": hex_id,
+                "capture_co": capture_co,
                 "extent": {
                     "xmin": extent.xMinimum(),
                     "ymin": extent.yMinimum(),
@@ -118,13 +155,16 @@ class GridCaptureResume:
                 "crs": self.grid_layer.crs().authid(),
                 "layers": [layer.name() for layer in self.other_layers],
             }
-            metadata_path = os.path.join(self.output_folder, f"cell_{grid_cell_id}.json")
+            metadata_path = os.path.join(self.output_folder, f"cell_{hex_id}.json")
             with open(metadata_path, "w") as f:
                 json.dump(metadata, f, indent=4)
 
             processed_cells += 1
+            last_processed_time = time.time()
+
             if processed_cells <= 5:
-                time_stamps.append(time.time() - start_time)
+                t1 = time.time()
+                time_stamps.append(t1 - t0)
 
             if processed_cells % batch_size == 0:
                 QCoreApplication.processEvents()
@@ -141,17 +181,26 @@ class GridCaptureResume:
                     remaining = total_features - len(existing_images) - processed_cells
                     eta_minutes = (remaining * avg_time) / 60
                     print(f"♻️ GC done | Recovered: {recovered} MB")
-                    print(f"🕐 {processed_cells} new | ETA: {eta_minutes:.1f} min | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
+                    print(f"🕐 {new_cells} new | ETA: {eta_minutes:.1f} min | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
                 else:
-                    print(f"🕐 {processed_cells} new | Estimating ETA... | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
+                    print(f"🕐 {new_cells} new | Estimating ETA... | 🧠 Used: {used_mem} MB | Free: {free_mem} MB")
 
                 if current_time - last_processed_time >= 300:
                     print("⚠️ No cells processed in 5 min. Potential crash/hang.")
                 last_update_time = current_time
 
-            # Optional restart safety
-            if processed_cells >= 8000:
-                print("🛑 Processed 8000 cells, stopping to avoid crash. Please re-run to continue.")
-                break
+        # Write log file with the last capture_co
+        elapsed = time.time() - start_time
+        eta_text = f"Last capture_co: {last_capture_co}\nElapsed time: {elapsed/60:.2f} minutes\n"
+        log_path = os.path.join(self.output_folder, "log.txt")
+        with open(log_path, "w") as log_file:
+            log_file.write(eta_text)
 
-        print(f"✅ Resume complete. {processed_cells} new cells captured.")
+        print(f"✅ Resume complete. {new_cells} new cells captured.")
+
+# Example of how to run the script
+if __name__ == '__main__':
+    output_folder = "C:/Users/essayeh.omar_amaris/Desktop/recalage"
+    capture_tool = GridCaptureResume(output_folder)
+    if capture_tool.grid_layer:
+        capture_tool.capture_remaining_cells()

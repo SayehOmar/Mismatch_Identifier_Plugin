@@ -1,5 +1,7 @@
 import json
 import os
+import time
+from datetime import datetime, timedelta
 from qgis.core import (
     QgsProject,
     QgsVectorLayer,
@@ -53,6 +55,14 @@ class BatchRecalageProcessor:
         self.json_folder = json_folder
         self.output_folder = output_folder
         self.merged_layer = None
+        
+        # Time tracking variables
+        self.start_time = time.time()
+        self.last_update_time = self.start_time
+        self.processed_files = 0
+        self.total_files = 0
+        self.processing_times = []
+        self.update_interval = 300  # 5 minutes in seconds
 
     def create_empty_layer(self, crs_authid, fields):
         layer = QgsVectorLayer(f"LineString?crs={crs_authid}", "Merged_Recalage", "memory")
@@ -61,6 +71,43 @@ class BatchRecalageProcessor:
         layer.updateFields()
         return layer
 
+    def write_time_estimate(self):
+        """Write time estimation to a file"""
+        current_time = time.time()
+        elapsed_time = current_time - self.start_time
+        
+        # Only calculate remaining time if we've processed at least one file
+        if self.processed_files > 0:
+            avg_time_per_file = sum(self.processing_times) / len(self.processing_times)
+            remaining_files = self.total_files - self.processed_files
+            estimated_remaining_time = avg_time_per_file * remaining_files
+            
+            # Format as readable time
+            remaining_time_str = str(timedelta(seconds=int(estimated_remaining_time)))
+            
+            # Create content for the file
+            content = (
+                f"Progress update at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                f"Files processed: {self.processed_files} of {self.total_files}\n"
+                f"Files remaining: {remaining_files}\n"
+                f"Average processing time per file: {avg_time_per_file:.2f} seconds\n"
+                f"Estimated remaining time: {remaining_time_str}\n"
+                f"Elapsed time: {str(timedelta(seconds=int(elapsed_time)))}\n"
+            )
+            
+            # Write to file
+            with open(os.path.join(self.output_folder, "remaining_time.txt"), "w") as f:
+                f.write(content)
+                
+            print("Updated time estimation file")
+            
+        self.last_update_time = current_time
+
+    def check_update_time(self):
+        """Check if it's time to update the time estimation file"""
+        if (time.time() - self.last_update_time) >= self.update_interval:
+            self.write_time_estimate()
+
     def run(self):
         json_files = [f for f in os.listdir(self.json_folder) if f.endswith('.json')]
         
@@ -68,11 +115,16 @@ class BatchRecalageProcessor:
             print("No JSON files found in the folder.")
             return
 
-        print(f"Found {len(json_files)} JSON files to process.")
+        self.total_files = len(json_files)
+        print(f"Found {self.total_files} JSON files to process.")
+        
+        # Ensure output folder exists
+        os.makedirs(self.output_folder, exist_ok=True)
 
         for idx, json_file in enumerate(json_files):
+            file_start_time = time.time()
             json_path = os.path.join(self.json_folder, json_file)
-            print(f"\nProcessing: {json_file}")
+            print(f"\nProcessing: {json_file} ({idx+1}/{self.total_files})")
             processor = RecalageProcessor(json_path)
 
             for layer_name in processor.layers_to_check:
@@ -88,10 +140,23 @@ class BatchRecalageProcessor:
                     features = processor.extract_features(layer)
                     self.merged_layer.dataProvider().addFeatures(features)
                     break  # Only take the first matching layer
+            
+            # Track processing time for this file
+            file_processing_time = time.time() - file_start_time
+            self.processing_times.append(file_processing_time)
+            self.processed_files += 1
+            
+            # Check if we need to update the time estimation file
+            self.check_update_time()
 
         if self.merged_layer:
             self.save_merged_layer()
-       
+        
+        # Final update to the time estimation file
+        with open(os.path.join(self.output_folder, "remaining_time.txt"), "w") as f:
+            f.write(f"Process completed at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"Total files processed: {self.processed_files}\n")
+            f.write(f"Total processing time: {str(timedelta(seconds=int(time.time() - self.start_time)))}\n")
 
     def save_merged_layer(self):
         os.makedirs(self.output_folder, exist_ok=True)
@@ -103,13 +168,3 @@ class BatchRecalageProcessor:
             print(f"Merged layer successfully saved to {output_path}")
         else:
             print(f"Error saving merged layer to {output_path}")
-
-# ========================
-
-# Set the folders
-#json_folder = r"C:\Users\essayeh.omar_amaris\AppData\Roaming\QGIS\QGIS3\profiles\default\python\plugins\Mismatch_Identifier_Plugin\Classified_images\cartography_error"
-#output_folder = r"C:\Users\essayeh.omar_amaris\Desktop\recalage"
-
-# Run batch processor
-#batch_processor = BatchRecalageProcessor(json_folder, output_folder)
-#batch_processor.run()
