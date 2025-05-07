@@ -42,6 +42,13 @@ class RecalageProcessor:
     def extract_features(self, source_layer):
         features_to_add = []
         for feat in source_layer.getFeatures():
+            # Get the field index for "CLASSE" attribute
+            classe_idx = source_layer.fields().indexFromName("CLASSE")
+            
+            # Skip this feature if it has CLASSE = "A"
+            if classe_idx >= 0 and feat.attributes()[classe_idx] == "A":
+                continue
+                
             if feat.geometry().intersects(self.extent):
                 new_feat = QgsFeature()
                 new_feat.setGeometry(feat.geometry())
