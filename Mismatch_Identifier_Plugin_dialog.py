@@ -8,6 +8,7 @@ from .File_loader import FileLoader
 from .grid_filter import GridFilter
 from .mismatch_identifier_Logic import MismatchIdentifierLogic
 from .stream_redirector import StreamRedirector
+from .RecalageCleaner import RecalageCleaner
 
 from .RecalageProcessor import BatchRecalageProcessor
 
@@ -135,21 +136,39 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     def resumeCapturing(self):
-        """Resume recalage processing from specified folder."""
+        """Resume recalage processing and clean recalage.shp file."""
         plugin_dir = os.path.dirname(os.path.abspath(__file__))
         json_folder = os.path.join(plugin_dir, "Classified_images", "cartography_error")
-
         output_folder = self.lineEdit_4.text().strip()
+
         try:
-           
-            # Create the recalage TASK
-             # Instantiate the processor and get the QgsTask from .run()
             processor = BatchRecalageProcessor(json_folder, output_folder)
-            task = processor.run() 
+            task = processor.run()
+
+            if task is None:
+                raise Exception("BatchRecalageProcessor.run() returned None. Task creation failed.")
+
+            # Define cleanup function to run after task completes
+            def after_task_cleanup():
+                try:
+                    cleaner = RecalageCleaner(output_folder)
+                    cleaner.run()
+                    self.safe_append_to_grid_creation_browser("✅ Removed Class A Lines from recalage.shp")
+                except Exception as e:
+                    QtWidgets.QMessageBox.critical(
+                        self, "❌ Error", f"Couldn't remove Class A Lines: {str(e)}"
+                    )
+
+            # Connect task completion to cleanup
+            task.taskCompleted.connect(after_task_cleanup)
+
+            # Start task
             QgsApplication.taskManager().addTask(task)
-            self.safe_append_to_grid_creation_browser("task resumed")
+            self.safe_append_to_grid_creation_browser("🚀 Recalage task resumed")
+
         except Exception as e:
-            QtWidgets.QMessageBox.critical(self, "❌ Error", f"Failed to capture grid cells: {str(e)}")
+            QtWidgets.QMessageBox.critical(self, "❌ Error", f"Error starting recalage task: {str(e)}")
+
 
           
 
@@ -198,7 +217,7 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
 
     def on_start_process_clicked(self):
-        """Main button logic"""
+        """Main button logic."""
         try:
             plugin_dir = os.path.dirname(os.path.abspath(__file__))
             input_folder = os.path.join(plugin_dir, "GridCaptures")
@@ -216,19 +235,38 @@ class Mismatch_Identifier_PluginDialog(QtWidgets.QDialog, FORM_CLASS):
 
             try:
                 json_folder = os.path.join(plugin_dir, "Classified_images", "cartography_error")
-                #  Get output folder from the QLineEdit
+                # Get output folder from the QLineEdit
                 output_folder_path = self.lineEdit_4.text().strip()
 
                 # Create the recalage TASK
                 processor = BatchRecalageProcessor(json_folder, output_folder_path)
-                task = processor.run() 
+                task = processor.run()
+
+                if task is None:
+                    raise Exception("BatchRecalageProcessor.run() returned None. Task creation failed.")
+
+                # Define cleanup function to run after task completes
+                def clean_after_recalage():
+                    try:
+                        cleaner = RecalageCleaner(output_folder_path)
+                        cleaner.run()
+                        self.safe_append_to_grid_creation_browser("🧹 Removed Class A lines from recalage.")
+                    except Exception as ce:
+                        QtWidgets.QMessageBox.critical(self, "❌ Error", f"Couldn't clean recalage layer: {str(ce)}")
+
+                # Connect cleanup function after task finishes
+                task.taskCompleted.connect(clean_after_recalage)
+
+                # Start the task
                 QgsApplication.taskManager().addTask(task)
-                self.safe_append_to_grid_creation_browser("✅ Recalage process completed!")
+                self.safe_append_to_grid_creation_browser("✅ Recalage task submitted!")
+
             except Exception as e:
                 self.safe_append_to_grid_creation_browser(f"❌ Failed during recalage processing: {str(e)}")
 
         except Exception as e:
             QtWidgets.QMessageBox.critical(self, "❌ Error", f"Process failed: {str(e)}")
+
 
 
 
