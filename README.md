@@ -1,6 +1,6 @@
 # 🛰️ Mismatch Identifier Plugin for QGIS
 
-This plugin was developed as part of my Master’s thesis in Geomatics. It allows automated detection and processing of cartographic mismatches in a grid-based QGIS project using deep learning and image classification.
+This plugin was developed as part of my Master’s thesis in Geomatics. It allows automated detection and processing of cartographic mismatches in a fibre-optic mapping using deep learning and image classification.
 
 ## 📌 Overview
 
