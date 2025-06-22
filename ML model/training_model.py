@@ -9,8 +9,8 @@ import numpy as np
 from multiprocessing import freeze_support
 
 # Define data directories (keep these outside as they are constants)
-train_dir = r"ML model\data\dataset_split\train"
-val_dir = r"ML model\data\dataset_split\val"
+train_dir = r"data\dataset_split\train"
+val_dir = r"data\dataset_split\val"
 best_model_path = "best_color_model.pth"
 image_size = 800
 batch_size = 8
